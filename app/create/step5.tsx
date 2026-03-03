@@ -155,7 +155,7 @@ export default function Step5Screen() {
             {/* Minutos */}
             <View style={styles.clockColumn}>
               <Pressable
-                onPress={() => handleMinuteChange(5)}
+                onPress={() => handleMinuteChange(1)}
                 style={styles.clockArrow}
                 accessibilityLabel="Aumentar minutos"
               >
@@ -165,7 +165,7 @@ export default function Step5Screen() {
                 {customMinute.toString().padStart(2, '0')}
               </Text>
               <Pressable
-                onPress={() => handleMinuteChange(-5)}
+                onPress={() => handleMinuteChange(-1)}
                 style={styles.clockArrow}
                 accessibilityLabel="Disminuir minutos"
               >

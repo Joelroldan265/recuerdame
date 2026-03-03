@@ -61,3 +61,8 @@
 
 - [x] Step 4: mostrar selector día/mes/año cuando se elige "Fecha específica"
 - [x] Step 5 y success: propagar y guardar customDate correctamente
+
+## Bugs
+
+- [x] Step 5: minutos avanzan de 1 en 1 (no de 5 en 5)
+- [x] Step 2: transcripción de audio debe poblar el campo de texto (Whisper vía backend)
