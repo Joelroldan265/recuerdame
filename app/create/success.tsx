@@ -27,12 +27,15 @@ export default function SuccessScreen() {
   const router = useRouter();
   const { addTask } = useTaskContext();
   const { settings } = useSettingsContext();
-  const { text, priority, repeatType, hour, minute } = useLocalSearchParams<{
+  const { text, priority, repeatType, hour, minute, customDay, customMonth, customYear } = useLocalSearchParams<{
     text: string;
     priority: string;
     repeatType: string;
     hour: string;
     minute: string;
+    customDay?: string;
+    customMonth?: string;
+    customYear?: string;
   }>();
 
   const taskHour = parseInt(hour ?? '9', 10);
@@ -48,6 +51,13 @@ export default function SuccessScreen() {
         reminderTime: { hour: taskHour, minute: taskMinute },
         completed: false,
         createdAt: new Date().toISOString(),
+        ...(customDay && customMonth && customYear ? {
+          customDate: {
+            day: parseInt(customDay, 10),
+            month: parseInt(customMonth, 10),
+            year: parseInt(customYear, 10),
+          },
+        } : {}),
       };
 
       await addTask(newTask);

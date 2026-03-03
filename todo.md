@@ -56,3 +56,8 @@
 - [x] Verificar TypeScript sin errores (0 errores)
 - [x] Root layout con TaskProvider y SettingsProvider
 - [x] Navegación completa entre todas las pantallas
+
+## Correcciones
+
+- [x] Step 4: mostrar selector día/mes/año cuando se elige "Fecha específica"
+- [x] Step 5 y success: propagar y guardar customDate correctamente

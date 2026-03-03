@@ -18,11 +18,125 @@ import { RepeatType, REPEAT_CONFIG } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora'];
 
+const MONTHS = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+function getDaysInMonth(month: number, year: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+// ─── Componente de rueda numérica ────────────────────────────────────────────
+
+interface WheelPickerProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  format?: (v: number) => string;
+}
+
+function WheelPicker({ label, value, min, max, onChange, format }: WheelPickerProps) {
+  const handleUp = () => {
+    const next = value < max ? value + 1 : min;
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onChange(next);
+  };
+  const handleDown = () => {
+    const prev = value > min ? value - 1 : max;
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onChange(prev);
+  };
+
+  const displayValue = format ? format(value) : String(value).padStart(2, '0');
+
+  return (
+    <View style={wheelStyles.container}>
+      <Text style={wheelStyles.label}>{label}</Text>
+      <Pressable
+        onPress={handleUp}
+        style={wheelStyles.arrow}
+        accessibilityLabel={`Aumentar ${label}`}
+      >
+        <Text style={wheelStyles.arrowText}>▲</Text>
+      </Pressable>
+      <View style={wheelStyles.valueBox}>
+        <Text style={wheelStyles.value}>{displayValue}</Text>
+      </View>
+      <Pressable
+        onPress={handleDown}
+        style={wheelStyles.arrow}
+        accessibilityLabel={`Disminuir ${label}`}
+      >
+        <Text style={wheelStyles.arrowText}>▼</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const wheelStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  arrow: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    width: '80%',
+  },
+  arrowText: {
+    fontSize: 18,
+    color: '#374151',
+    fontWeight: '700',
+  },
+  valueBox: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+    borderColor: '#1A56DB',
+    width: '80%',
+    alignItems: 'center',
+  },
+  value: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1A56DB',
+  },
+});
+
+// ─── Pantalla principal ───────────────────────────────────────────────────────
+
 export default function Step4Screen() {
   const router = useRouter();
   const { settings } = useSettingsContext();
   const { text, priority } = useLocalSearchParams<{ text: string; priority: string }>();
+
   const [selected, setSelected] = useState<RepeatType | null>(null);
+
+  const today = new Date();
+  const [day, setDay] = useState(today.getDate());
+  const [month, setMonth] = useState(today.getMonth() + 1); // 1-12
+  const [year, setYear] = useState(today.getFullYear());
+
+  // Ajustar día si supera el máximo del mes seleccionado
+  const maxDay = getDaysInMonth(month, year);
+  const safeDay = day > maxDay ? maxDay : day;
 
   useEffect(() => {
     if (settings.soundEnabled) {
@@ -32,18 +146,29 @@ export default function Step4Screen() {
 
   const handleSelect = useCallback((repeatType: RepeatType) => {
     if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setSelected(repeatType);
   }, []);
 
   const handleContinue = useCallback(() => {
     if (!selected) return;
-    router.push({
-      pathname: '/create/step5',
-      params: { text, priority, repeatType: selected },
-    });
-  }, [selected, text, priority, router]);
+
+    const params: Record<string, string> = {
+      text: text ?? '',
+      priority: priority ?? 'medium',
+      repeatType: selected,
+    };
+
+    // Solo pasar customDate si el tipo es 'custom'
+    if (selected === 'custom') {
+      params.customDay = safeDay.toString();
+      params.customMonth = month.toString();
+      params.customYear = year.toString();
+    }
+
+    router.push({ pathname: '/create/step5', params });
+  }, [selected, text, priority, safeDay, month, year, router]);
 
   return (
     <ScreenContainer>
@@ -55,6 +180,7 @@ export default function Step4Screen() {
           <Text style={styles.subtitle}>¿Con qué frecuencia quieres este recordatorio?</Text>
         </View>
 
+        {/* Opciones de repetición */}
         <View style={styles.options}>
           {(Object.keys(REPEAT_CONFIG) as RepeatType[]).map((repeatType) => {
             const config = REPEAT_CONFIG[repeatType];
@@ -88,6 +214,51 @@ export default function Step4Screen() {
             );
           })}
         </View>
+
+        {/* ── Selector de fecha personalizada ── */}
+        {selected === 'custom' && (
+          <View style={styles.datePicker}>
+            <Text style={styles.datePickerTitle}>📅 Elige la fecha</Text>
+
+            <View style={styles.datePickerRow}>
+              {/* Día */}
+              <WheelPicker
+                label="Día"
+                value={safeDay}
+                min={1}
+                max={maxDay}
+                onChange={(v) => setDay(v)}
+              />
+
+              {/* Mes */}
+              <WheelPicker
+                label="Mes"
+                value={month}
+                min={1}
+                max={12}
+                onChange={(v) => setMonth(v)}
+                format={(v) => MONTHS[v - 1].slice(0, 3)}
+              />
+
+              {/* Año */}
+              <WheelPicker
+                label="Año"
+                value={year}
+                min={today.getFullYear()}
+                max={today.getFullYear() + 5}
+                onChange={(v) => setYear(v)}
+                format={(v) => String(v)}
+              />
+            </View>
+
+            {/* Resumen de la fecha seleccionada */}
+            <View style={styles.dateSummary}>
+              <Text style={styles.dateSummaryText}>
+                📌 {safeDay} de {MONTHS[month - 1]} de {year}
+              </Text>
+            </View>
+          </View>
+        )}
 
         <BigButton
           label="Continuar →"
@@ -176,5 +347,42 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  // ── Date Picker ──────────────────────────────────────────
+  datePicker: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+    borderWidth: 2,
+    borderColor: '#1A56DB',
+    shadowColor: '#1A56DB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  datePickerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A56DB',
+    textAlign: 'center',
+  },
+  datePickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dateSummary: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  dateSummaryText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A56DB',
   },
 });

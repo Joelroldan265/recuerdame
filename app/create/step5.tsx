@@ -21,10 +21,13 @@ const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 
 export default function Step5Screen() {
   const router = useRouter();
   const { settings } = useSettingsContext();
-  const { text, priority, repeatType } = useLocalSearchParams<{
+  const { text, priority, repeatType, customDay, customMonth, customYear } = useLocalSearchParams<{
     text: string;
     priority: string;
     repeatType: string;
+    customDay?: string;
+    customMonth?: string;
+    customYear?: string;
   }>();
 
   const [selectedTime, setSelectedTime] = useState<ReminderTime | null>(null);
@@ -73,16 +76,18 @@ export default function Step5Screen() {
 
   const handleContinue = useCallback(() => {
     if (!selectedTime) return;
-    router.push({
-      pathname: '/create/success',
-      params: {
-        text,
-        priority,
-        repeatType,
-        hour: selectedTime.hour.toString(),
-        minute: selectedTime.minute.toString(),
-      },
-    });
+    const params: Record<string, string> = {
+      text: text ?? '',
+      priority: priority ?? 'medium',
+      repeatType: repeatType ?? 'once',
+      hour: selectedTime.hour.toString(),
+      minute: selectedTime.minute.toString(),
+    };
+    if (customDay) params.customDay = customDay;
+    if (customMonth) params.customMonth = customMonth;
+    if (customYear) params.customYear = customYear;
+
+    router.push({ pathname: '/create/success', params });
   }, [selectedTime, text, priority, repeatType, router]);
 
   return (
