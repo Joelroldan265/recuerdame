@@ -66,3 +66,7 @@
 
 - [x] Step 5: minutos avanzan de 1 en 1 (no de 5 en 5)
 - [x] Step 2: transcripción de audio debe poblar el campo de texto (Whisper vía backend)
+
+- [x] Transcripción: el texto no aparece en Step 2 tras grabar voz
+- [x] TTS: no lee en voz alta los recordatorios (botón 🔊 en tarjetas y detalle)
+- [x] Estabilidad: ninguna operación debe bloquear el hilo principal

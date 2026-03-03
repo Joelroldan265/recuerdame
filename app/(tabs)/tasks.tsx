@@ -112,6 +112,7 @@ export default function TasksScreen() {
             task={item}
             onPress={handleTaskPress}
             onComplete={handleComplete}
+            voiceSpeed={settings.voiceSpeed}
           />
         )}
         ListEmptyComponent={renderEmpty}

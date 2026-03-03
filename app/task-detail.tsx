@@ -14,7 +14,7 @@ import { BigButton } from '@/components/big-button';
 import { PriorityBadge } from '@/components/priority-badge';
 import { useTaskContext } from '@/lib/task-context';
 import { useSettingsContext } from '@/lib/settings-context';
-import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
+import { speak, stopSpeaking, VOICE_MESSAGES } from '@/lib/speech-service';
 import * as Haptics from 'expo-haptics';
 
 function formatTime(hour: number, minute: number): string {
@@ -52,6 +52,10 @@ export default function TaskDetailScreen() {
       </ScreenContainer>
     );
   }
+
+  const handleReadAloud = useCallback(() => {
+    speak(task.text, settings.voiceSpeed);
+  }, [task.text, settings.voiceSpeed]);
 
   const handleComplete = useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -113,6 +117,17 @@ export default function TaskDetailScreen() {
         </View>
 
         {/* Texto de la tarea */}
+        {/* Botón leer en voz alta */}
+        {!isEditing && (
+          <BigButton
+            label="🔊 Leer en voz alta"
+            onPress={handleReadAloud}
+            variant="secondary"
+            fullWidth
+            style={styles.readAloudBtn}
+          />
+        )}
+
         {isEditing ? (
           <View style={styles.editContainer}>
             <TextInput
@@ -340,6 +355,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: 12,
+  },
+  readAloudBtn: {
+    marginBottom: 8,
   },
   bottomPadding: {
     height: 40,

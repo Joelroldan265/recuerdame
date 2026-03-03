@@ -99,6 +99,7 @@ export default function HomeScreen() {
                 task={task}
                 onPress={handleTaskPress}
                 onComplete={handleComplete}
+                voiceSpeed={settings.voiceSpeed}
               />
             ))
           )}
@@ -114,6 +115,7 @@ export default function HomeScreen() {
                 task={task}
                 onPress={handleTaskPress}
                 onComplete={handleComplete}
+                voiceSpeed={settings.voiceSpeed}
               />
             ))}
           </View>

@@ -4,12 +4,14 @@ import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { Task, PRIORITY_CONFIG } from '@/lib/task-types';
 import { PriorityBadge } from './priority-badge';
+import { speak } from '@/lib/speech-service';
 
 interface TaskCardProps {
   task: Task;
   onPress: (task: Task) => void;
   onComplete: (task: Task) => void;
   onSnooze?: (task: Task) => void;
+  voiceSpeed?: number;
 }
 
 function formatTime(hour: number, minute: number): string {
@@ -35,6 +37,7 @@ export const TaskCard = memo(function TaskCard({
   onPress,
   onComplete,
   onSnooze,
+  voiceSpeed = 1.0,
 }: TaskCardProps) {
   const config = PRIORITY_CONFIG[task.priority];
 
@@ -50,6 +53,13 @@ export const TaskCard = memo(function TaskCard({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     onSnooze?.(task);
+  };
+
+  const handleReadAloud = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    speak(task.text, voiceSpeed);
   };
 
   return (
@@ -90,6 +100,14 @@ export const TaskCard = memo(function TaskCard({
             style={({ pressed }) => [styles.actionBtn, styles.completeBtn, { opacity: pressed ? 0.7 : 1 }]}
           >
             <Text style={styles.actionBtnText}>✅</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleReadAloud}
+            accessibilityRole="button"
+            accessibilityLabel="Leer en voz alta"
+            style={({ pressed }) => [styles.actionBtn, styles.readBtn, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Text style={styles.actionBtnText}>🔊</Text>
           </Pressable>
           {onSnooze && (
             <Pressable
@@ -180,6 +198,9 @@ const styles = StyleSheet.create({
   },
   snoozeBtn: {
     backgroundColor: '#EFF6FF',
+  },
+  readBtn: {
+    backgroundColor: '#FEF3C7',
   },
   actionBtnText: {
     fontSize: 22,

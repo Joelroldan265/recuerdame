@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -31,23 +30,22 @@ export default function Step2Screen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
+  // Ref para evitar doble-transcripción en StrictMode
+  const hasTranscribed = useRef(false);
+
   const transcribeMutation = trpc.voice.transcribe.useMutation();
+  // Guardamos la mutación en ref para que el useEffect siempre tenga la versión actual
+  const transcribeMutationRef = useRef(transcribeMutation);
+  transcribeMutationRef.current = transcribeMutation;
 
-  useEffect(() => {
-    if (settings.soundEnabled) {
-      speak(VOICE_MESSAGES.step2, settings.voiceSpeed);
-    }
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
-    // Si hay audio y no hay texto inicial, transcribir
-    if (audioUri && !initialText) {
-      transcribeRecording(audioUri);
-    }
-  }, []);
-
-  const transcribeRecording = useCallback(async (uri: string) => {
+  // Función de transcripción estable (no depende de closures que cambien)
+  const doTranscribe = useCallback(async (uri: string) => {
     if (Platform.OS === 'web') {
       // En web no hay acceso al sistema de archivos nativo
-      setTaskText('');
+      setTranscribeError('La grabación de voz no está disponible en web. Escribe el recordatorio manualmente.');
       return;
     }
 
@@ -70,30 +68,46 @@ export default function Step2Screen() {
         webm: 'audio/webm',
         ogg: 'audio/ogg',
         mp3: 'audio/mpeg',
+        caf: 'audio/x-caf',
       };
       const mimeType = mimeMap[ext] ?? 'audio/m4a';
 
-      // Llamar al backend para transcribir
-      const result = await transcribeMutation.mutateAsync({
+      // Llamar al backend para transcribir con Whisper
+      const result = await transcribeMutationRef.current.mutateAsync({
         audioBase64: base64,
         mimeType,
       });
 
       if (result.text && result.text.trim()) {
-        setTaskText(result.text.trim());
-        if (settings.soundEnabled) {
-          speak(result.text.trim(), settings.voiceSpeed);
+        const transcribed = result.text.trim();
+        setTaskText(transcribed);
+        // Leer el texto transcrito en voz alta para confirmar
+        if (settingsRef.current.soundEnabled) {
+          speak(transcribed, settingsRef.current.voiceSpeed);
         }
       } else {
-        setTranscribeError('No se pudo transcribir el audio. Escribe el recordatorio manualmente.');
+        setTranscribeError('No se detectó texto en la grabación. Escribe el recordatorio manualmente.');
       }
     } catch (err) {
       console.error('[Step2] Transcription error:', err);
-      setTranscribeError('Error al transcribir. Escribe el recordatorio manualmente.');
+      setTranscribeError('No se pudo transcribir. Escribe el recordatorio manualmente.');
     } finally {
       setIsTranscribing(false);
     }
-  }, [transcribeMutation, settings]);
+  }, []); // Sin dependencias: usa refs para acceder a valores actuales
+
+  useEffect(() => {
+    // Anunciar el paso
+    if (settingsRef.current.soundEnabled) {
+      speak(VOICE_MESSAGES.step2, settingsRef.current.voiceSpeed);
+    }
+
+    // Si hay audio y no hay texto inicial, transcribir (solo una vez)
+    if (audioUri && !initialText && !hasTranscribed.current) {
+      hasTranscribed.current = true;
+      doTranscribe(audioUri);
+    }
+  }, [audioUri, initialText, doTranscribe]);
 
   const handleContinue = useCallback(() => {
     const trimmed = taskText.trim();
@@ -108,12 +122,21 @@ export default function Step2Screen() {
     router.back();
   }, [router]);
 
-  const handleRetryTranscription = useCallback(() => {
+  const handleRetry = useCallback(() => {
     if (audioUri) {
+      hasTranscribed.current = false;
       setTaskText('');
-      transcribeRecording(audioUri);
+      setTranscribeError(null);
+      hasTranscribed.current = true;
+      doTranscribe(audioUri);
     }
-  }, [audioUri, transcribeRecording]);
+  }, [audioUri, doTranscribe]);
+
+  const handleReadAloud = useCallback(() => {
+    if (taskText.trim()) {
+      speak(taskText.trim(), settingsRef.current.voiceSpeed);
+    }
+  }, [taskText]);
 
   return (
     <ScreenContainer>
@@ -133,21 +156,22 @@ export default function Step2Screen() {
           </View>
         ) : (
           <>
-            {/* Mensaje de error de transcripción */}
+            {/* Banner de error */}
             {transcribeError && (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorText}>⚠️ {transcribeError}</Text>
                 {audioUri ? (
                   <BigButton
                     label="🔄 Reintentar"
-                    onPress={handleRetryTranscription}
+                    onPress={handleRetry}
                     variant="secondary"
-                    style={styles.retryBtn}
+                    style={styles.inlineBtnSmall}
                   />
                 ) : null}
               </View>
             )}
 
+            {/* Campo de texto */}
             <View style={styles.textContainer}>
               <Text style={styles.textLabel}>Tu recordatorio:</Text>
               <TextInput
@@ -158,11 +182,19 @@ export default function Step2Screen() {
                 autoFocus={!audioUri || !!transcribeError}
                 returnKeyType="done"
                 accessibilityLabel="Texto del recordatorio. Puedes editarlo."
-                placeholder="Escribe tu recordatorio..."
+                placeholder="Escribe tu recordatorio aquí..."
                 placeholderTextColor="#9CA3AF"
               />
               {taskText.trim().length > 0 && (
-                <Text style={styles.charCount}>{taskText.trim().length} caracteres</Text>
+                <View style={styles.textMeta}>
+                  <Text style={styles.charCount}>{taskText.trim().length} caracteres</Text>
+                  <BigButton
+                    label="🔊 Leer"
+                    onPress={handleReadAloud}
+                    variant="ghost"
+                    style={styles.inlineBtnSmall}
+                  />
+                </View>
               )}
             </View>
           </>
@@ -232,18 +264,13 @@ const styles = StyleSheet.create({
     padding: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#F59E0B',
-    gap: 10,
+    gap: 8,
   },
   errorText: {
     fontSize: 16,
     color: '#92400E',
     fontWeight: '500',
-  },
-  retryBtn: {
-    alignSelf: 'flex-start',
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    lineHeight: 22,
   },
   textContainer: {
     gap: 8,
@@ -265,10 +292,19 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     lineHeight: 32,
   },
+  textMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   charCount: {
     fontSize: 13,
     color: '#9CA3AF',
-    textAlign: 'right',
+  },
+  inlineBtnSmall: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
   actions: {
     gap: 12,
