@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { ScreenContainer } from '@/components/screen-container';
 import { useSettingsContext } from '@/lib/settings-context';
 import { speak } from '@/lib/speech-service';
+import { scheduleTestNotification } from '@/lib/notification-service';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -72,6 +73,29 @@ export default function SettingsScreen() {
     }
     updateSettings({ [key]: value });
   }, [updateSettings]);
+
+  const [testNotifStatus, setTestNotifStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  const handleTestNotification = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      setTestNotifStatus('error');
+      return;
+    }
+    setTestNotifStatus('sending');
+    try {
+      const id = await scheduleTestNotification();
+      if (id) {
+        setTestNotifStatus('sent');
+        setTimeout(() => setTestNotifStatus('idle'), 8000);
+      } else {
+        setTestNotifStatus('error');
+        setTimeout(() => setTestNotifStatus('idle'), 4000);
+      }
+    } catch {
+      setTestNotifStatus('error');
+      setTimeout(() => setTestNotifStatus('idle'), 4000);
+    }
+  }, []);
 
   const handleSpeedChange = useCallback((speed: number) => {
     if (Platform.OS !== 'web') {
@@ -180,6 +204,32 @@ export default function SettingsScreen() {
               />
             </View>
           )}
+        </View>
+
+        {/* Notificaciones */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔔 Notificaciones</Text>
+          <View style={styles.notifTestContainer}>
+            <Text style={styles.rowLabel}>Probar notificaciones</Text>
+            <Text style={styles.rowDescription}>Envía una alerta de prueba en 5 segundos para verificar que funcionan en tu dispositivo.</Text>
+            <Pressable
+              onPress={handleTestNotification}
+              disabled={testNotifStatus === 'sending'}
+              style={[styles.testBtn, testNotifStatus === 'sent' && styles.testBtnSent, testNotifStatus === 'error' && styles.testBtnError]}
+              accessibilityRole="button"
+              accessibilityLabel="Enviar notificación de prueba"
+            >
+              <Text style={styles.testBtnText}>
+                {testNotifStatus === 'idle' && '🔔 Enviar notificación de prueba'}
+                {testNotifStatus === 'sending' && '⏳ Enviando...'}
+                {testNotifStatus === 'sent' && '✅ ¡Llegará en 5 segundos!'}
+                {testNotifStatus === 'error' && '❌ Error — verifica permisos'}
+              </Text>
+            </Pressable>
+            {Platform.OS === 'web' && (
+              <Text style={styles.webNote}>⚠️ Las notificaciones solo funcionan en dispositivos físicos (iOS/Android).</Text>
+            )}
+          </View>
         </View>
 
         {/* Acerca de */}
@@ -345,5 +395,35 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  notifTestContainer: {
+    padding: 20,
+    gap: 12,
+  },
+  testBtn: {
+    backgroundColor: '#1A56DB',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  testBtnSent: {
+    backgroundColor: '#16A34A',
+  },
+  testBtnError: {
+    backgroundColor: '#DC2626',
+  },
+  testBtnText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  webNote: {
+    fontSize: 13,
+    color: '#F59E0B',
+    textAlign: 'center',
+    marginTop: 4,
   },
 });

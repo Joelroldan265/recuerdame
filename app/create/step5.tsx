@@ -16,7 +16,7 @@ import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
 import { QUICK_TIMES, ReminderTime } from '@/lib/task-types';
 
-const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora'];
+const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
 
 export default function Step5Screen() {
   const router = useRouter();
@@ -87,13 +87,13 @@ export default function Step5Screen() {
     if (customMonth) params.customMonth = customMonth;
     if (customYear) params.customYear = customYear;
 
-    router.push({ pathname: '/create/success', params });
+    router.push({ pathname: '/create/step6', params });
   }, [selectedTime, text, priority, repeatType, router]);
 
   return (
     <ScreenContainer>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <StepIndicator currentStep={5} totalSteps={5} labels={STEP_LABELS} />
+        <StepIndicator currentStep={5} totalSteps={6} labels={STEP_LABELS} />
 
         <View style={styles.titleContainer}>
           <Text style={styles.title}>⏰ Hora del recordatorio</Text>

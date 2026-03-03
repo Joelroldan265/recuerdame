@@ -70,3 +70,6 @@
 - [x] Transcripción: el texto no aparece en Step 2 tras grabar voz
 - [x] TTS: no lee en voz alta los recordatorios (botón 🔊 en tarjetas y detalle)
 - [x] Estabilidad: ninguna operación debe bloquear el hilo principal
+
+- [x] Step 6: pantalla de resumen (hora + repetición) antes de guardar
+- [x] Notificaciones locales: canal Android antes de permisos, triggers correctos, botón de prueba en Ajustes
