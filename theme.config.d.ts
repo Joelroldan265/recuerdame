@@ -8,6 +8,9 @@ export const themeColors: {
   success: { light: string; dark: string };
   warning: { light: string; dark: string };
   error: { light: string; dark: string };
+  priorityHigh: { light: string; dark: string };
+  priorityMedium: { light: string; dark: string };
+  priorityLow: { light: string; dark: string };
 };
 
 declare const themeConfig: {
