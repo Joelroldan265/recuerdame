@@ -257,6 +257,62 @@ export async function scheduleTaskNotification(
 }
 
 /**
+ * Programa notificaciones de snooze (repetición post-recordatorio).
+ * Programa 3 notificaciones adicionales con el intervalo especificado en minutos.
+ */
+export async function scheduleSnoozeNotifications(
+  task: Task,
+  settings: Settings,
+): Promise<string[]> {
+  if (task.snoozeInterval === 0) return [];
+
+  try {
+    const hasPermission = await initNotificationsLazy();
+    if (!hasPermission) return [];
+
+    const channelId = Platform.OS === 'android' ? 'recuerdame-default' : undefined;
+    const emoji = priorityEmoji(task.priority);
+    const ids: string[] = [];
+    const SNOOZE_COUNT = 3; // Número de repeticiones adicionales
+
+    // Calcular la hora base del recordatorio principal
+    const now = new Date();
+    const base = new Date();
+    base.setHours(task.reminderTime.hour, task.reminderTime.minute, 0, 0);
+    if (base.getTime() <= now.getTime()) {
+      base.setDate(base.getDate() + 1);
+    }
+
+    for (let i = 1; i <= SNOOZE_COUNT; i++) {
+      const snoozeDate = new Date(base.getTime() + i * task.snoozeInterval * 60 * 1000);
+
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `${emoji} Recordatorio (${i}/${SNOOZE_COUNT})`,
+          body: task.text,
+          data: { taskId: task.id, snooze: true, snoozeIndex: i },
+          sound: settings.soundEnabled ? 'default' : undefined,
+          vibrate: [0, 300, 200, 300],
+          priority: task.priority === 'high' ? 'max' : 'high',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: snoozeDate,
+          ...(channelId ? { channelId } : {}),
+        },
+      });
+      ids.push(id);
+    }
+
+    console.log(`[NotifService] ${ids.length} notificaciones de snooze programadas para tarea ${task.id}`);
+    return ids;
+  } catch (err) {
+    console.error('[NotifService] Error al programar snooze:', err);
+    return [];
+  }
+}
+
+/**
  * Programa una notificación de prueba que se dispara en 5 segundos.
  * Útil para verificar que las notificaciones funcionan en el dispositivo.
  */

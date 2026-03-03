@@ -14,7 +14,7 @@ import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
-import { QUICK_TIMES, ReminderTime } from '@/lib/task-types';
+import { QUICK_TIMES, SNOOZE_OPTIONS, ReminderTime, SnoozeInterval } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
 
@@ -35,6 +35,7 @@ export default function Step5Screen() {
   const [customHour, setCustomHour] = useState(9);
   const [customMinute, setCustomMinute] = useState(0);
   const [useCustom, setUseCustom] = useState(false);
+  const [snoozeInterval, setSnoozeInterval] = useState<SnoozeInterval>(0);
 
   useEffect(() => {
     if (settings.soundEnabled) {
@@ -53,19 +54,31 @@ export default function Step5Screen() {
   }, []);
 
   const handleHourChange = useCallback((delta: number) => {
-    setCustomHour((prev) => (prev + delta + 24) % 24);
+    setCustomHour((prev) => {
+      const next = (prev + delta + 24) % 24;
+      setSelectedTime({ hour: next, minute: customMinute });
+      return next;
+    });
     setUseCustom(true);
     setSelectedQuick(null);
-    setSelectedTime({ hour: (customHour + delta + 24) % 24, minute: customMinute });
-  }, [customHour, customMinute]);
+  }, [customMinute]);
 
   const handleMinuteChange = useCallback((delta: number) => {
-    const newMin = (customMinute + delta + 60) % 60;
-    setCustomMinute(newMin);
+    setCustomMinute((prev) => {
+      const next = (prev + delta + 60) % 60;
+      setSelectedTime({ hour: customHour, minute: next });
+      return next;
+    });
     setUseCustom(true);
     setSelectedQuick(null);
-    setSelectedTime({ hour: customHour, minute: newMin });
-  }, [customHour, customMinute]);
+  }, [customHour]);
+
+  const handleSnoozeSelect = useCallback((value: SnoozeInterval) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setSnoozeInterval(value);
+  }, []);
 
   const formatTimeDisplay = (hour: number, minute: number) => {
     const h = hour % 12 || 12;
@@ -82,13 +95,14 @@ export default function Step5Screen() {
       repeatType: repeatType ?? 'once',
       hour: selectedTime.hour.toString(),
       minute: selectedTime.minute.toString(),
+      snoozeInterval: snoozeInterval.toString(),
     };
     if (customDay) params.customDay = customDay;
     if (customMonth) params.customMonth = customMonth;
     if (customYear) params.customYear = customYear;
 
     router.push({ pathname: '/create/step6', params });
-  }, [selectedTime, text, priority, repeatType, router]);
+  }, [selectedTime, snoozeInterval, text, priority, repeatType, router, customDay, customMonth, customYear]);
 
   return (
     <ScreenContainer>
@@ -198,10 +212,49 @@ export default function Step5Screen() {
           </View>
         )}
 
+        {/* ── NUEVA SECCIÓN: ¿Cada cuánto te recuerdo? ── */}
+        <View style={styles.snoozeSection}>
+          <Text style={styles.sectionLabel}>🔔 ¿Cada cuánto te recuerdo?</Text>
+          <Text style={styles.snoozeSubtitle}>
+            Después del primer aviso, ¿quieres que te repita el recordatorio?
+          </Text>
+          <View style={styles.snoozeGrid}>
+            {SNOOZE_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.value}
+                onPress={() => handleSnoozeSelect(opt.value)}
+                accessibilityRole="radio"
+                accessibilityLabel={opt.label}
+                accessibilityState={{ checked: snoozeInterval === opt.value }}
+                style={({ pressed }) => [
+                  styles.snoozeBtn,
+                  snoozeInterval === opt.value && styles.snoozeBtnActive,
+                  { transform: [{ scale: pressed ? 0.95 : 1 }] },
+                ]}
+              >
+                <Text style={[styles.snoozeBtnLabel, snoozeInterval === opt.value && styles.snoozeBtnLabelActive]}>
+                  {opt.label}
+                </Text>
+                <Text style={[styles.snoozeBtnDesc, snoozeInterval === opt.value && styles.snoozeBtnDescActive]}>
+                  {opt.description}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {snoozeInterval > 0 && (
+            <View style={styles.snoozeInfo}>
+              <Text style={styles.snoozeInfoText}>
+                ⏱️ Te recordaré a las {selectedTime ? formatTimeDisplay(selectedTime.hour, selectedTime.minute) : '—'} y luego cada {snoozeInterval} minutos (3 veces más).
+              </Text>
+            </View>
+          )}
+        </View>
+
         <BigButton
-          label="✅ Guardar recordatorio"
+          label="Siguiente →"
           onPress={handleContinue}
-          variant="success"
+          variant="primary"
           fullWidth
           disabled={!selectedTime}
         />
@@ -346,5 +399,74 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     color: '#0E9F6E',
+  },
+  // ── Snooze ──
+  snoozeSection: {
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  snoozeSubtitle: {
+    fontSize: 15,
+    color: '#6B7280',
+    lineHeight: 22,
+  },
+  snoozeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  snoozeBtn: {
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    gap: 2,
+  },
+  snoozeBtnActive: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#F59E0B',
+  },
+  snoozeBtnLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  snoozeBtnLabelActive: {
+    color: '#D97706',
+  },
+  snoozeBtnDesc: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  snoozeBtnDescActive: {
+    color: '#D97706',
+  },
+  snoozeInfo: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  snoozeInfoText: {
+    fontSize: 15,
+    color: '#92400E',
+    lineHeight: 22,
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });

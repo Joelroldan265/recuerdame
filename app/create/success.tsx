@@ -9,8 +9,8 @@ import { PriorityBadge } from '@/components/priority-badge';
 import { useTaskContext } from '@/lib/task-context';
 import { useSettingsContext } from '@/lib/settings-context';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
-import { scheduleTaskNotification } from '@/lib/notification-service';
-import { Task, Priority, RepeatType } from '@/lib/task-types';
+import { scheduleTaskNotification, scheduleSnoozeNotifications } from '@/lib/notification-service';
+import { Task, Priority, RepeatType, SnoozeInterval } from '@/lib/task-types';
 
 function generateId(): string {
   return `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -27,12 +27,16 @@ export default function SuccessScreen() {
   const router = useRouter();
   const { addTask } = useTaskContext();
   const { settings } = useSettingsContext();
-  const { text, priority, repeatType, hour, minute, customDay, customMonth, customYear } = useLocalSearchParams<{
+  const {
+    text, priority, repeatType, hour, minute,
+    customDay, customMonth, customYear, snoozeInterval,
+  } = useLocalSearchParams<{
     text: string;
     priority: string;
     repeatType: string;
     hour: string;
     minute: string;
+    snoozeInterval?: string;
     customDay?: string;
     customMonth?: string;
     customYear?: string;
@@ -40,6 +44,7 @@ export default function SuccessScreen() {
 
   const taskHour = parseInt(hour ?? '9', 10);
   const taskMinute = parseInt(minute ?? '0', 10);
+  const parsedSnooze = (parseInt(snoozeInterval ?? '0', 10) as SnoozeInterval) || 0;
 
   useEffect(() => {
     const saveTask = async () => {
@@ -49,6 +54,7 @@ export default function SuccessScreen() {
         priority: (priority as Priority) ?? 'medium',
         repeatType: (repeatType as RepeatType) ?? 'once',
         reminderTime: { hour: taskHour, minute: taskMinute },
+        snoozeInterval: parsedSnooze,
         completed: false,
         createdAt: new Date().toISOString(),
         ...(customDay && customMonth && customYear ? {
@@ -62,10 +68,16 @@ export default function SuccessScreen() {
 
       await addTask(newTask);
 
-      // Programar notificación (lazy)
+      // Programar notificación principal (lazy)
       const notifId = await scheduleTaskNotification(newTask, settings);
+
+      // Programar notificaciones de snooze si el intervalo es > 0
+      if (parsedSnooze > 0) {
+        await scheduleSnoozeNotifications(newTask, settings);
+      }
+
       if (notifId) {
-        // Actualizar con ID de notificación (no bloquea la UI)
+        // Notificación programada correctamente
       }
 
       if (Platform.OS !== 'web') {
@@ -91,6 +103,10 @@ export default function SuccessScreen() {
   const handleGoHome = useCallback(() => {
     router.replace('/');
   }, [router]);
+
+  const snoozeLabel = parsedSnooze === 0
+    ? 'Sin repetición'
+    : `Cada ${parsedSnooze} min (3 veces más)`;
 
   return (
     <ScreenContainer>
@@ -120,6 +136,12 @@ export default function SuccessScreen() {
                 repeatType === 'weekly' ? 'Semanal' :
                 repeatType === 'monthly' ? 'Mensual' : 'Fecha específica'}
           </Text>
+
+          {parsedSnooze > 0 && (
+            <Text style={styles.summarySnooze}>
+              ⏱️ {snoozeLabel}
+            </Text>
+          )}
         </View>
 
         {/* Acciones */}
@@ -211,6 +233,11 @@ const styles = StyleSheet.create({
   summaryRepeat: {
     fontSize: 16,
     color: '#6B7280',
+  },
+  summarySnooze: {
+    fontSize: 15,
+    color: '#D97706',
+    fontWeight: '600',
   },
   actions: {
     width: '100%',

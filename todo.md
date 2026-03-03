@@ -73,3 +73,8 @@
 
 - [x] Step 6: pantalla de resumen (hora + repetición) antes de guardar
 - [x] Notificaciones locales: canal Android antes de permisos, triggers correctos, botón de prueba en Ajustes
+
+- [x] Step 5: agregar selector de repetición post-recordatorio (cada 5/10/15 min)
+- [x] Tipos: agregar snoozeInterval a Task
+- [x] Notificaciones: programar snooze automático tras el primer aviso (3 repeticiones)
+- [x] TTS al abrir app desde notificación: leer el recordatorio en voz alta (foreground + tap)
