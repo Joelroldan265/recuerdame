@@ -142,3 +142,9 @@
 - [x] Corregir: listener de respuestas en _layout.tsx tenía bloque roto (return sin cerrar llaves)
 - [x] Añadir handler para notificación persistente (action='open_record') en listener
 - [x] Asegurar que la notificación persistente NO aparece en pantalla de bloqueo (lockscreenVisibility=SECRET)
+
+## Bug: Selector de hora Step 5
+
+- [x] Scroll picker no funciona: todos los números visibles, no giran, botón Siguiente no responde
+- [x] Reescribir con ScrollView snap (DrumPicker) para horas, minutos y AM/PM
+- [x] Botón Siguiente siempre habilitado (hora por defecto 9:00 AM)
