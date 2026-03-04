@@ -30,6 +30,8 @@ import {
   NOTIFICATION_ACTION_SNOOZE_15,
   NOTIFICATION_ACTION_SILENCE,
   snoozeTaskNotification,
+  showPersistentNotification,
+  hidePersistentNotification,
 } from "@/lib/notification-service";
 import { speak, stopSpeaking } from "@/lib/speech-service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -59,6 +61,26 @@ export default function RootLayout() {
 
   useEffect(() => {
     initManusRuntime();
+  }, []);
+
+  // Restaurar la notificación persistente al arrancar (si el usuario la tenía activada)
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const timer = setTimeout(async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@recuerdame_settings');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.persistentNotification === true) {
+            await showPersistentNotification();
+          } else {
+            // Asegurarse de que no haya notificación persistente si está desactivada
+            await hidePersistentNotification();
+          }
+        }
+      } catch { /* ignorar */ }
+    }, 2000); // Esperar 2s para que los canales Android estén inicializados
+    return () => clearTimeout(timer);
   }, []);
 
   // ── Helpers de voz ────────────────────────────────────────────────────────
@@ -142,7 +164,7 @@ export default function RootLayout() {
       const taskId   = (data?.taskId ?? '') as string;
       const taskPriority = (data?.taskPriority ?? 'medium') as string;
 
-      // ── Acción: Silenciar ─────────────────────────────────────────────
+      // ── Acción: Silenciar ────────────────────────────────────────────────────
       if (actionId === NOTIFICATION_ACTION_SILENCE) {
         // Detener cualquier TTS activo y limpiar el texto pendiente
         try {
@@ -152,13 +174,20 @@ export default function RootLayout() {
         return;
       }
 
-      // ── Acción: Grabar nuevo ────────────────────────────────────────────
+      // ── Acción: Grabar nuevo (botón rápido en notificación de recordatorio) ────────────────
       if (actionId === NOTIFICATION_ACTION_RECORD) {
         setTimeout(() => router.push('/create/step1'), 300);
         return;
       }
 
-      // ── Acción: Completar (sin abrir app) ─────────────────────────────────
+      // ── Toque en la notificación persistente (abrir grabación rápida) ──────────────────
+      const notifAction = (data?.action ?? '') as string;
+      if (notifAction === 'open_record') {
+        setTimeout(() => router.push('/create/step1'), 300);
+        return;
+      }
+
+      // ── Acción: Completar (sin abrir app) ─────────────────────────────────────────────────────
       if (actionId === NOTIFICATION_ACTION_COMPLETE) {
         if (taskId) {
           try {
@@ -171,7 +200,7 @@ export default function RootLayout() {
         return;
       }
 
-      // ── Acciones de posponer ──────────────────────────────────────────────
+      // ── Acciones de posponer ──────────────────────────────────────────────────────
       const snoozeMap: Record<string, number> = {
         [NOTIFICATION_ACTION_SNOOZE_5]:  5,
         [NOTIFICATION_ACTION_SNOOZE_10]: 10,

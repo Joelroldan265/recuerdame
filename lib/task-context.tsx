@@ -39,9 +39,29 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(async () => {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          setTasks(JSON.parse(stored));
+        let loadedTasks: Task[] = stored ? JSON.parse(stored) : [];
+
+        // Procesar tareas pendientes de completar (acción rápida "✅ Completar" desde pantalla bloqueada)
+        try {
+          const pendingRaw = await AsyncStorage.getItem('recuerdame_complete_on_load');
+          if (pendingRaw) {
+            await AsyncStorage.removeItem('recuerdame_complete_on_load');
+            const ids: string[] = JSON.parse(pendingRaw);
+            if (ids.length > 0) {
+              const now = new Date().toISOString();
+              loadedTasks = loadedTasks.map((t) =>
+                ids.includes(t.id) ? { ...t, completed: true, completedAt: now } : t
+              );
+              // Guardar el estado actualizado
+              await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loadedTasks));
+              console.log('[TaskContext] Tareas completadas desde pantalla bloqueada:', ids);
+            }
+          }
+        } catch (err) {
+          console.warn('[TaskContext] Error procesando complete_on_load:', err);
         }
+
+        setTasks(loadedTasks);
       } catch (error) {
         console.error('[TaskContext] Error loading tasks:', error);
       } finally {

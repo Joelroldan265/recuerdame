@@ -119,3 +119,26 @@
 - [x] Scroll ágil (snap) para selector de hora en Step 5
 - [x] Notificaciones: usar sonido de alarma seleccionado por el usuario en canal ALARM
 - [x] Settings: reiniciar caché de notificaciones al cambiar sonido de alarma
+
+## Notificación Persistente de Grabación Rápida
+
+- [x] Crear canal Android "recuerdame-quick" para notificación persistente (prioridad LOW, sin sonido)
+- [x] Función showPersistentNotification() que publica notificación fija con botón "🎤 Grabar ahora"
+- [x] Función hidePersistentNotification() que cancela la notificación persistente
+- [x] Toggle en Ajustes para activar/desactivar la notificación persistente
+- [x] Persistir preferencia de notificación persistente en Settings
+- [x] Al arrancar la app, restaurar la notificación persistente si estaba activada
+- [x] Manejar tap en la notificación persistente → abrir /create/step1
+
+## Auditoría de Notificaciones con Pantalla Bloqueada
+
+- [x] Verificar que los canales Android tienen lockscreenVisibility=PUBLIC para alarmas y recordatorios
+- [x] Verificar que bypassDnd=true solo en canal ALARM (prioridad alta)
+- [x] Verificar que el handler global tiene shouldShowAlert/shouldPlaySound/shouldSetBadge=true
+- [x] Verificar que los permisos iOS solicitan allowCriticalAlerts
+- [x] Verificar que el deep link desde notificación funciona con pantalla bloqueada
+- [x] Corregir: taskPriority no se incluia en data de la notificación (snooze usaba siempre 'medium')
+- [x] Corregir: complete_on_load no se procesaba en TaskContext (tareas completadas desde pantalla bloqueada se perdían)
+- [x] Corregir: listener de respuestas en _layout.tsx tenía bloque roto (return sin cerrar llaves)
+- [x] Añadir handler para notificación persistente (action='open_record') en listener
+- [x] Asegurar que la notificación persistente NO aparece en pantalla de bloqueo (lockscreenVisibility=SECRET)

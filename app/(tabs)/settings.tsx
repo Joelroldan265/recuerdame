@@ -11,7 +11,12 @@ import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { useSettingsContext } from '@/lib/settings-context';
 import { speak } from '@/lib/speech-service';
-import { scheduleTestNotification, resetNotificationPermissionCache } from '@/lib/notification-service';
+import {
+  scheduleTestNotification,
+  resetNotificationPermissionCache,
+  showPersistentNotification,
+  hidePersistentNotification,
+} from '@/lib/notification-service';
 import { UNLOCK_DELAY_OPTIONS, UnlockReadDelay, ALARM_SOUND_OPTIONS, AlarmSound } from '@/lib/task-types';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
@@ -156,6 +161,18 @@ export default function SettingsScreen() {
     updateSettings({ alarmSound: sound });
     // Reiniciar caché para que el canal Android se recree con el nuevo sonido
     resetNotificationPermissionCache();
+  }, [updateSettings]);
+
+  const handlePersistentNotifToggle = useCallback(async (value: boolean) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    updateSettings({ persistentNotification: value });
+    if (value) {
+      await showPersistentNotification();
+    } else {
+      await hidePersistentNotification();
+    }
   }, [updateSettings]);
 
   // Valor actual con fallback para settings guardados antes de esta versión
@@ -340,6 +357,33 @@ export default function SettingsScreen() {
             </View>
           )}
         </View>
+
+        {/* Acceso rápido Android */}
+        {Platform.OS === 'android' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🎤 Acceso rápido (Android)</Text>
+            <View style={styles.row}>
+              <View style={styles.rowText}>
+                <Text style={styles.rowLabel}>Notificación de grabación rápida</Text>
+                <Text style={styles.rowDescription}>
+                  Muestra una notificación fija en el panel de notificaciones para grabar un recordatorio sin abrir la app.
+                </Text>
+              </View>
+              <Switch
+                value={settings.persistentNotification ?? false}
+                onValueChange={handlePersistentNotifToggle}
+                trackColor={{ false: '#D1D5DB', true: '#1A56DB' }}
+                thumbColor="#FFFFFF"
+                accessibilityLabel="Activar notificación de grabación rápida"
+              />
+            </View>
+            {(settings.persistentNotification ?? false) && (
+              <Text style={[styles.rowDescription, { paddingHorizontal: 16, paddingBottom: 8, color: '#0E9F6E' }]}>
+                ✅ Activa. Busca la notificación "🎤 recuérdame" en el panel de notificaciones.
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* Notificaciones */}
         <View style={styles.section}>

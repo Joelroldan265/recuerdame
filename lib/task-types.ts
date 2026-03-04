@@ -51,6 +51,7 @@ export interface Settings {
   doNotDisturbEnd: ReminderTime;   // hora fin no molestar
   unlockReadDelay: UnlockReadDelay; // ms antes de leer al desbloquear
   alarmSound: AlarmSound; // sonido de alarma para prioridad alta
+  persistentNotification: boolean; // notificación fija de grabación rápida en Android
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -62,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   doNotDisturbEnd: { hour: 8, minute: 0 },
   unlockReadDelay: 1000, // 1 segundo por defecto
   alarmSound: 'alarm_classic', // sonido de alarma por defecto
+  persistentNotification: false, // desactivado por defecto
 };
 
 export const UNLOCK_DELAY_OPTIONS: Array<{ label: string; description: string; value: UnlockReadDelay }> = [

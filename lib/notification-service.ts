@@ -33,6 +33,11 @@ const ANDROID_CHANNEL_ALARM    = 'recuerdame-alarm';
 const ANDROID_CHANNEL_REMINDER = 'recuerdame-reminders';
 /** Canal SILENCIOSO — prioridad baja: solo banner, sin sonido */
 const ANDROID_CHANNEL_SILENT   = 'recuerdame-silent';
+/** Canal PERSISTENTE — acceso rápido fijo en el panel de notificaciones, sin sonido */
+const ANDROID_CHANNEL_QUICK    = 'recuerdame-quick';
+
+/** ID fijo de la notificación persistente (para poder cancelarla por ID) */
+const PERSISTENT_NOTIFICATION_ID = 'recuerdame-persistent-record';
 
 /** Devuelve el channelId correcto según la prioridad de la tarea */
 function channelForPriority(priority: string): string {
@@ -161,6 +166,18 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         bypassDnd: false,
       });
+
+      // Canal PERSISTENTE — acceso rápido fijo, sin sonido, importancia mínima
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_QUICK, {
+        name: '🎤 Grabación rápida',
+        description: 'Acceso rápido para grabar un nuevo recordatorio desde el panel de notificaciones.',
+        importance: Notifications.AndroidImportance.MIN,
+        enableVibrate: false,
+        showBadge: false,
+        sound: undefined,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.SECRET,
+        bypassDnd: false,
+      });
     }
 
     await registerNotificationCategories();
@@ -253,7 +270,7 @@ function buildNotificationContent(
   return {
     title,
     body: task.text,
-    data: { taskId: task.id, taskText: task.text, action: 'reminder', ...extraData },
+    data: { taskId: task.id, taskText: task.text, taskPriority: task.priority, action: 'reminder', ...extraData },
     sound,
     categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
   };
@@ -452,4 +469,60 @@ export function addNotificationReceivedListener(
   handler: (notification: Notifications.Notification) => void,
 ): Notifications.Subscription {
   return Notifications.addNotificationReceivedListener(handler);
+}
+
+// ── Notificación Persistente de Grabación Rápida ──────────────────────────────
+
+/**
+ * Muestra una notificación fija en el panel de notificaciones con un botón
+ * para abrir directamente la pantalla de grabación de voz.
+ *
+ * Solo funciona en Android. En iOS no hay notificaciones persistentes.
+ * Usa el canal QUICK (importancia MIN) para no molestar al usuario.
+ */
+export async function showPersistentNotification(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+
+  try {
+    // Asegurarse de que los canales estén creados
+    await initNotificationsLazy();
+
+    // Cancelar la anterior si existe (para evitar duplicados)
+    await hidePersistentNotification();
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: PERSISTENT_NOTIFICATION_ID,
+      content: {
+        title: '🎤 recuérdame',
+        body: 'Toca para grabar un nuevo recordatorio de voz',
+        data: { action: 'open_record', screen: '/create/step1' },
+        // Sin sonido ni vibración — es una notificación de acceso rápido
+        sound: false,
+        // Canal Android de importancia mínima (no interrumpe, no suena, no aparece en pantalla bloqueada)
+        ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_QUICK }),
+      },
+      trigger: null, // Mostrar inmediatamente
+    });
+
+    console.log('[NotifService] Notificación persistente activada');
+  } catch (err) {
+    console.warn('[NotifService] Error al mostrar notificación persistente:', err);
+  }
+}
+
+/**
+ * Cancela la notificación persistente de grabación rápida.
+ */
+export async function hidePersistentNotification(): Promise<void> {
+  try {
+    // Intentar cancelar como notificación programada
+    await Notifications.cancelScheduledNotificationAsync(PERSISTENT_NOTIFICATION_ID);
+  } catch { /* ignore — puede que no exista */ }
+
+  try {
+    // También cancelar como notificación presentada (por si ya fue mostrada)
+    await Notifications.dismissNotificationAsync(PERSISTENT_NOTIFICATION_ID);
+  } catch { /* ignore */ }
+
+  console.log('[NotifService] Notificación persistente desactivada');
 }
