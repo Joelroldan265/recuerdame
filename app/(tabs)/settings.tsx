@@ -11,6 +11,7 @@ import { ScreenContainer } from '@/components/screen-container';
 import { useSettingsContext } from '@/lib/settings-context';
 import { speak } from '@/lib/speech-service';
 import { scheduleTestNotification } from '@/lib/notification-service';
+import { UNLOCK_DELAY_OPTIONS, UnlockReadDelay } from '@/lib/task-types';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -26,6 +27,38 @@ function SpeedButton({ value, current, onPress }: { value: number; current: numb
     >
       <Text style={[styles.speedBtnText, isActive && styles.speedBtnTextActive]}>
         {value}x
+      </Text>
+    </Pressable>
+  );
+}
+
+function DelayButton({
+  label,
+  description,
+  value,
+  current,
+  onPress,
+}: {
+  label: string;
+  description: string;
+  value: UnlockReadDelay;
+  current: UnlockReadDelay;
+  onPress: (v: UnlockReadDelay) => void;
+}) {
+  const isActive = current === value;
+  return (
+    <Pressable
+      onPress={() => onPress(value)}
+      accessibilityRole="radio"
+      accessibilityLabel={`${label}: ${description}`}
+      accessibilityState={{ checked: isActive }}
+      style={[styles.delayBtn, isActive && styles.delayBtnActive]}
+    >
+      <Text style={[styles.delayBtnLabel, isActive && styles.delayBtnLabelActive]}>
+        {label}
+      </Text>
+      <Text style={[styles.delayBtnDesc, isActive && styles.delayBtnDescActive]}>
+        {description}
       </Text>
     </Pressable>
   );
@@ -107,6 +140,16 @@ export default function SettingsScreen() {
     }
   }, [updateSettings, settings.soundEnabled]);
 
+  const handleDelayChange = useCallback((delay: UnlockReadDelay) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    updateSettings({ unlockReadDelay: delay });
+  }, [updateSettings]);
+
+  // Valor actual con fallback para settings guardados antes de esta versión
+  const currentDelay: UnlockReadDelay = (settings.unlockReadDelay ?? 1000) as UnlockReadDelay;
+
   return (
     <ScreenContainer>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -147,6 +190,37 @@ export default function SettingsScreen() {
               </View>
             </View>
           )}
+        </View>
+
+        {/* Lectura al desbloquear */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔓 Lectura al desbloquear</Text>
+
+          <View style={styles.delayHeader}>
+            <Text style={styles.rowLabel}>Tiempo de espera</Text>
+            <Text style={styles.rowDescription}>
+              Cuánto espera la app antes de leer el recordatorio en voz alta cuando desbloqueas el teléfono tras recibir una notificación.
+            </Text>
+          </View>
+
+          <View style={styles.delayGrid}>
+            {UNLOCK_DELAY_OPTIONS.map((opt) => (
+              <DelayButton
+                key={opt.value}
+                label={opt.label}
+                description={opt.description}
+                value={opt.value}
+                current={currentDelay}
+                onPress={handleDelayChange}
+              />
+            ))}
+          </View>
+
+          <View style={styles.delayNote}>
+            <Text style={styles.delayNoteText}>
+              💡 Si tu dispositivo tarda en iniciar el audio al encenderse, usa un tiempo mayor (3–5 segundos).
+            </Text>
+          </View>
         </View>
 
         {/* Accesibilidad */}
@@ -211,23 +285,31 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>🔔 Notificaciones</Text>
           <View style={styles.notifTestContainer}>
             <Text style={styles.rowLabel}>Probar notificaciones</Text>
-            <Text style={styles.rowDescription}>Envía una alerta de prueba en 5 segundos para verificar que funcionan en tu dispositivo.</Text>
+            <Text style={styles.rowDescription}>
+              Envía una alerta de prueba en 5 segundos. Bloquea la pantalla para verificar que aparece y suena correctamente.
+            </Text>
             <Pressable
               onPress={handleTestNotification}
               disabled={testNotifStatus === 'sending'}
-              style={[styles.testBtn, testNotifStatus === 'sent' && styles.testBtnSent, testNotifStatus === 'error' && styles.testBtnError]}
+              style={[
+                styles.testBtn,
+                testNotifStatus === 'sent' && styles.testBtnSent,
+                testNotifStatus === 'error' && styles.testBtnError,
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Enviar notificación de prueba"
             >
               <Text style={styles.testBtnText}>
-                {testNotifStatus === 'idle' && '🔔 Enviar notificación de prueba'}
+                {testNotifStatus === 'idle'    && '🔔 Enviar notificación de prueba'}
                 {testNotifStatus === 'sending' && '⏳ Enviando...'}
-                {testNotifStatus === 'sent' && '✅ ¡Llegará en 5 segundos!'}
-                {testNotifStatus === 'error' && '❌ Error — verifica permisos'}
+                {testNotifStatus === 'sent'    && '✅ ¡Llegará en 5 segundos!'}
+                {testNotifStatus === 'error'   && '❌ Error — verifica permisos'}
               </Text>
             </Pressable>
             {Platform.OS === 'web' && (
-              <Text style={styles.webNote}>⚠️ Las notificaciones solo funcionan en dispositivos físicos (iOS/Android).</Text>
+              <Text style={styles.webNote}>
+                ⚠️ Las notificaciones solo funcionan en dispositivos físicos (iOS/Android).
+              </Text>
             )}
           </View>
         </View>
@@ -307,6 +389,7 @@ const styles = StyleSheet.create({
   rowDescription: {
     fontSize: 14,
     color: '#6B7280',
+    lineHeight: 20,
   },
   speedSection: {
     paddingHorizontal: 20,
@@ -338,6 +421,62 @@ const styles = StyleSheet.create({
   speedBtnTextActive: {
     color: '#1A56DB',
   },
+  // ── Delay selector ──────────────────────────────────────────────────────────
+  delayHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 12,
+    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  delayGrid: {
+    padding: 16,
+    gap: 10,
+  },
+  delayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  delayBtnActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#1A56DB',
+  },
+  delayBtnLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  delayBtnLabelActive: {
+    color: '#1A56DB',
+  },
+  delayBtnDesc: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  delayBtnDescActive: {
+    color: '#3B82F6',
+  },
+  delayNote: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    padding: 12,
+  },
+  delayNoteText: {
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+  },
+  // ── No molestar ─────────────────────────────────────────────────────────────
   dndTimes: {
     padding: 16,
     gap: 12,
@@ -374,28 +513,7 @@ const styles = StyleSheet.create({
     minWidth: 80,
     textAlign: 'center',
   },
-  aboutCard: {
-    padding: 20,
-    gap: 6,
-  },
-  aboutTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1A56DB',
-  },
-  aboutVersion: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  aboutDescription: {
-    fontSize: 16,
-    color: '#374151',
-    lineHeight: 24,
-    marginTop: 4,
-  },
-  bottomPadding: {
-    height: 40,
-  },
+  // ── Notificaciones ──────────────────────────────────────────────────────────
   notifTestContainer: {
     padding: 20,
     gap: 12,
@@ -425,5 +543,28 @@ const styles = StyleSheet.create({
     color: '#F59E0B',
     textAlign: 'center',
     marginTop: 4,
+  },
+  // ── Acerca de ───────────────────────────────────────────────────────────────
+  aboutCard: {
+    padding: 20,
+    gap: 6,
+  },
+  aboutTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1A56DB',
+  },
+  aboutVersion: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  aboutDescription: {
+    fontSize: 16,
+    color: '#374151',
+    lineHeight: 24,
+    marginTop: 4,
+  },
+  bottomPadding: {
+    height: 40,
   },
 });

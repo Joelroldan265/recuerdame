@@ -95,8 +95,18 @@ export default function RootLayout() {
           const pendingText = await AsyncStorage.getItem(PENDING_SPEAK_KEY);
           if (pendingText) {
             await AsyncStorage.removeItem(PENDING_SPEAK_KEY);
-            // Delay de 600ms para que el motor de audio se inicialice tras el desbloqueo
-            setTimeout(() => speakText(pendingText), 600);
+            // Leer el delay configurado por el usuario (por defecto 1000ms)
+            let readDelay = 1000;
+            try {
+              const rawSettings = await AsyncStorage.getItem('recuerdame_settings');
+              if (rawSettings) {
+                const parsed = JSON.parse(rawSettings);
+                if (typeof parsed.unlockReadDelay === 'number') {
+                  readDelay = parsed.unlockReadDelay;
+                }
+              }
+            } catch { /* usar valor por defecto */ }
+            setTimeout(() => speakText(pendingText), readDelay);
           }
         } catch { /* ignorar */ }
 

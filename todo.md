@@ -91,3 +91,5 @@
 
 - [x] Notificación: botones de posponer 5, 10 y 15 minutos directamente en la alerta
 - [x] AppState: leer recordatorio en voz alta al desbloquear el teléfono tras recibir notificación
+
+- [x] Ajustes: opción para configurar el tiempo de espera antes de leer al desbloquear (0s/1s/3s/5s/10s)

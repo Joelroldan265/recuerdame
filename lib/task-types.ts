@@ -32,6 +32,9 @@ export interface Task {
   notificationId?: string; // ID de la notificación principal programada
 }
 
+/** Tiempo de espera en ms antes de leer el recordatorio al desbloquear. */
+export type UnlockReadDelay = 0 | 1000 | 3000 | 5000 | 10000;
+
 export interface Settings {
   voiceSpeed: number; // 0.5 – 2.0
   soundEnabled: boolean;
@@ -39,6 +42,7 @@ export interface Settings {
   doNotDisturbEnabled: boolean;
   doNotDisturbStart: ReminderTime; // hora inicio no molestar
   doNotDisturbEnd: ReminderTime;   // hora fin no molestar
+  unlockReadDelay: UnlockReadDelay; // ms antes de leer al desbloquear
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -48,7 +52,16 @@ export const DEFAULT_SETTINGS: Settings = {
   doNotDisturbEnabled: false,
   doNotDisturbStart: { hour: 22, minute: 0 },
   doNotDisturbEnd: { hour: 8, minute: 0 },
+  unlockReadDelay: 1000, // 1 segundo por defecto
 };
+
+export const UNLOCK_DELAY_OPTIONS: Array<{ label: string; description: string; value: UnlockReadDelay }> = [
+  { label: 'Inmediato', description: 'Lee al instante al desbloquear', value: 0 },
+  { label: '1 segundo', description: 'Espera 1s antes de leer', value: 1000 },
+  { label: '3 segundos', description: 'Espera 3s antes de leer', value: 3000 },
+  { label: '5 segundos', description: 'Espera 5s antes de leer', value: 5000 },
+  { label: '10 segundos', description: 'Espera 10s antes de leer', value: 10000 },
+];
 
 export const PRIORITY_CONFIG: Record<Priority, { label: string; emoji: string; color: string; bgColor: string }> = {
   high: { label: 'Alta', emoji: '🔴', color: '#FF5A1F', bgColor: '#FFF3EE' },
