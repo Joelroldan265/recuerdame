@@ -102,3 +102,6 @@
 - [x] Notificaciones: notificación estándar (media con sonido, baja sin sonido) para prioridad media y baja
 
 - [x] TaskCard: badge "🔔 ALARMA" pulsante, franja roja superior, fondo rojizo y nota de alarma para prioridad alta
+
+- [x] Sonido de alarma real para notificaciones de prioridad alta (alarm.wav generado en assets/sounds/)
+- [x] Canal Android ALARM configurado con sound: 'alarm' (res/raw/alarm.wav), bypassDnd y vibración larga

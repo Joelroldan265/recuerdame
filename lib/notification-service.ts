@@ -108,13 +108,15 @@ export async function initNotificationsLazy(): Promise<boolean> {
   try {
     if (Platform.OS === 'android') {
       // Canal ALARMA — prioridad alta
+      // El archivo alarm.wav se copia a res/raw/alarm.wav en el APK por el plugin expo-notifications
+      // En Android, el nombre del sonido es el nombre del archivo sin extensión
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ALARM, {
         name: '🔴 Recordatorios urgentes (Alarma)',
         description: 'Alarma para recordatorios de prioridad alta. Suena aunque el teléfono esté en silencio.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 500, 200, 500, 200, 500],  // vibración larga y repetida
         lightColor: '#EF4444',
-        sound: 'default',
+        sound: 'alarm',   // ← nombre del archivo sin extensión (res/raw/alarm.wav)
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -229,8 +231,12 @@ function buildNotificationContent(
     title,
     body: task.text,
     data: { taskId: task.id, taskText: task.text, action: 'reminder', ...extraData },
-    // Alta y media reproducen sonido si está habilitado; baja nunca
-    sound: (!isLow && settings.soundEnabled) ? true : false,
+    // Alta: sonido de alarma personalizado (alarm.wav en res/raw)
+    // Media: sonido del sistema
+    // Baja: sin sonido
+    sound: isHigh
+      ? 'alarm'          // ← nombre del archivo alarm.wav sin extensión
+      : (!isLow && settings.soundEnabled) ? true : false,
     categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
   };
 }

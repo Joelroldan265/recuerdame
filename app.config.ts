@@ -91,7 +91,9 @@ const config: ExpoConfig = {
       {
         icon: "./assets/images/icon.png",
         color: "#1A56DB",
-        defaultChannel: "recuerdame-default",
+        defaultChannel: "recuerdame-reminders",
+        // Sonidos personalizados — se copian a res/raw/ en el APK Android
+        sounds: ["./assets/sounds/alarm.wav"],
       },
     ],
     [
