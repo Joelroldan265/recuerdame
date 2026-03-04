@@ -88,3 +88,6 @@
 
 - [x] Notificaciones: corregido canal Android con lockscreenVisibility PUBLIC, bypassDnd, sound:true, channelId en trigger
 - [x] Notificaciones: permisos iOS con allowCriticalAlerts, eliminado vibrate/priority inválidos del content
+
+- [x] Notificación: botones de posponer 5, 10 y 15 minutos directamente en la alerta
+- [x] AppState: leer recordatorio en voz alta al desbloquear el teléfono tras recibir notificación
