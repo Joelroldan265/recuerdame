@@ -85,3 +85,6 @@
 - [x] Step 1: cronómetro de grabación en tiempo real (con barra de progreso y auto-stop a 30s)
 - [x] Notificaciones: acción rápida "🎤 Grabar nuevo" y "✅ Completar" en la notificación
 - [x] Notificaciones: texto del recordatorio visible en el cuerpo de la notificación
+
+- [x] Notificaciones: corregido canal Android con lockscreenVisibility PUBLIC, bypassDnd, sound:true, channelId en trigger
+- [x] Notificaciones: permisos iOS con allowCriticalAlerts, eliminado vibrate/priority inválidos del content
