@@ -5,16 +5,21 @@
  *
  * Correcciones aplicadas:
  * 1. Canal Android creado ANTES de solicitar permisos (requerido por Android 13+)
- * 2. Trigger DATE siempre apunta al futuro (si la hora ya pasó hoy, programa para mañana)
- * 3. Trigger DAILY / WEEKLY / MONTHLY usan los tipos correctos del SDK
+ * 2. Trigger DATE siempre apunta al futuro
+ * 3. Categorías de notificación con acciones rápidas:
+ *    - "🎙️ Grabar ahora" → abre la app en el flujo de grabación
+ *    - "✅ Completar" → marca la tarea como completada
  * 4. setNotificationHandler llamado en el módulo (no dentro de funciones async)
- * 5. Para "una vez" con fecha pasada: se agenda para el día siguiente automáticamente
- * 6. Se usa TIME_INTERVAL como fallback de 5 segundos para pruebas inmediatas
  */
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Task, Settings } from './task-types';
+
+// ── Identificadores de categoría y acciones ───────────────────────────────────
+export const NOTIFICATION_CATEGORY_REMINDER = 'reminder';
+export const NOTIFICATION_ACTION_COMPLETE = 'complete';
+export const NOTIFICATION_ACTION_RECORD = 'record';
 
 // ── Handler global (debe estar en el módulo, no dentro de funciones) ──────────
 Notifications.setNotificationHandler({
@@ -31,10 +36,42 @@ Notifications.setNotificationHandler({
 
 // ── Estado de inicialización ──────────────────────────────────────────────────
 let permissionGranted: boolean | null = null;
+let categoriesRegistered = false;
 
 /**
- * Inicializa el canal de Android y solicita permisos.
- * Debe llamarse antes de programar cualquier notificación.
+ * Registra las categorías de notificación con acciones rápidas.
+ * Solo se registra una vez por sesión.
+ */
+async function registerNotificationCategories(): Promise<void> {
+  if (categoriesRegistered) return;
+  try {
+    await Notifications.setNotificationCategoryAsync(NOTIFICATION_CATEGORY_REMINDER, [
+      {
+        identifier: NOTIFICATION_ACTION_COMPLETE,
+        buttonTitle: '✅ Completar',
+        options: {
+          // No abre la app — acción silenciosa en background
+          opensAppToForeground: false,
+        },
+      },
+      {
+        identifier: NOTIFICATION_ACTION_RECORD,
+        buttonTitle: '🎙️ Grabar nuevo',
+        options: {
+          // Abre la app directamente en el flujo de grabación
+          opensAppToForeground: true,
+        },
+      },
+    ]);
+    categoriesRegistered = true;
+    console.log('[NotifService] Categorías de notificación registradas');
+  } catch (err) {
+    console.warn('[NotifService] No se pudieron registrar categorías:', err);
+  }
+}
+
+/**
+ * Inicializa el canal de Android, registra categorías y solicita permisos.
  * Seguro llamarlo múltiples veces (idempotente).
  */
 export async function initNotificationsLazy(): Promise<boolean> {
@@ -55,7 +92,10 @@ export async function initNotificationsLazy(): Promise<boolean> {
       });
     }
 
-    // 2. Solicitar permisos
+    // 2. Registrar categorías con acciones rápidas
+    await registerNotificationCategories();
+
+    // 3. Solicitar permisos
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
 
@@ -89,6 +129,7 @@ export async function initNotificationsLazy(): Promise<boolean> {
  */
 export function resetNotificationPermissionCache(): void {
   permissionGranted = null;
+  categoriesRegistered = false;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -97,8 +138,6 @@ function nextOccurrence(hour: number, minute: number): Date {
   const now = new Date();
   const candidate = new Date();
   candidate.setHours(hour, minute, 0, 0);
-
-  // Si la hora ya pasó hoy, moverla al día siguiente
   if (candidate.getTime() <= now.getTime()) {
     candidate.setDate(candidate.getDate() + 1);
   }
@@ -115,6 +154,7 @@ function priorityEmoji(priority: string): string {
 
 /**
  * Programa una notificación local para la tarea dada.
+ * Incluye acciones rápidas: "✅ Completar" y "🎙️ Grabar nuevo".
  * Devuelve el ID de la notificación, o null si no fue posible programarla.
  */
 export async function scheduleTaskNotification(
@@ -155,7 +195,6 @@ export async function scheduleTaskNotification(
 
     switch (task.repeatType) {
       case 'daily': {
-        // Diario a la hora especificada
         trigger = {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour,
@@ -166,9 +205,7 @@ export async function scheduleTaskNotification(
       }
 
       case 'weekly': {
-        // Semanal — mismo día de la semana que hoy
         const now = new Date();
-        // weekday: 1=Domingo … 7=Sábado (según expo-notifications)
         const weekday = now.getDay() + 1;
         trigger = {
           type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
@@ -181,7 +218,6 @@ export async function scheduleTaskNotification(
       }
 
       case 'monthly': {
-        // Mensual — mismo día del mes que hoy
         const now = new Date();
         const day = now.getDate();
         trigger = {
@@ -195,7 +231,6 @@ export async function scheduleTaskNotification(
       }
 
       case 'custom': {
-        // Fecha específica elegida por el usuario
         if (task.customDate) {
           const { day, month, year } = task.customDate;
           const targetDate = new Date(year, month - 1, day, hour, minute, 0, 0);
@@ -212,7 +247,6 @@ export async function scheduleTaskNotification(
             ...(channelId ? { channelId } : {}),
           };
         } else {
-          // Fallback: próxima ocurrencia de la hora
           trigger = {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: nextOccurrence(hour, minute),
@@ -224,7 +258,6 @@ export async function scheduleTaskNotification(
 
       case 'once':
       default: {
-        // Una sola vez — próxima ocurrencia de la hora (hoy o mañana)
         trigger = {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: nextOccurrence(hour, minute),
@@ -237,13 +270,18 @@ export async function scheduleTaskNotification(
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: `${emoji} Recordatorio`,
+        // El texto completo del recordatorio aparece en el cuerpo de la notificación
         body: task.text,
-        data: { taskId: task.id },
+        data: {
+          taskId: task.id,
+          taskText: task.text,
+          action: 'reminder',
+        },
         sound: settings.soundEnabled ? 'default' : undefined,
-        // Vibrar en Android
         vibrate: [0, 300, 200, 300],
-        // Prioridad alta para que aparezca como banner
         priority: task.priority === 'high' ? 'max' : 'high',
+        // Asignar la categoría con acciones rápidas
+        categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
       },
       trigger,
     });
@@ -258,7 +296,6 @@ export async function scheduleTaskNotification(
 
 /**
  * Programa notificaciones de snooze (repetición post-recordatorio).
- * Programa 3 notificaciones adicionales con el intervalo especificado en minutos.
  */
 export async function scheduleSnoozeNotifications(
   task: Task,
@@ -273,9 +310,8 @@ export async function scheduleSnoozeNotifications(
     const channelId = Platform.OS === 'android' ? 'recuerdame-default' : undefined;
     const emoji = priorityEmoji(task.priority);
     const ids: string[] = [];
-    const SNOOZE_COUNT = 3; // Número de repeticiones adicionales
+    const SNOOZE_COUNT = 3;
 
-    // Calcular la hora base del recordatorio principal
     const now = new Date();
     const base = new Date();
     base.setHours(task.reminderTime.hour, task.reminderTime.minute, 0, 0);
@@ -290,10 +326,17 @@ export async function scheduleSnoozeNotifications(
         content: {
           title: `${emoji} Recordatorio (${i}/${SNOOZE_COUNT})`,
           body: task.text,
-          data: { taskId: task.id, snooze: true, snoozeIndex: i },
+          data: {
+            taskId: task.id,
+            taskText: task.text,
+            snooze: true,
+            snoozeIndex: i,
+            action: 'reminder',
+          },
           sound: settings.soundEnabled ? 'default' : undefined,
           vibrate: [0, 300, 200, 300],
           priority: task.priority === 'high' ? 'max' : 'high',
+          categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -313,8 +356,7 @@ export async function scheduleSnoozeNotifications(
 }
 
 /**
- * Programa una notificación de prueba que se dispara en 5 segundos.
- * Útil para verificar que las notificaciones funcionan en el dispositivo.
+ * Notificación de prueba que se dispara en 5 segundos.
  */
 export async function scheduleTestNotification(): Promise<string | null> {
   try {
@@ -326,8 +368,10 @@ export async function scheduleTestNotification(): Promise<string | null> {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: '✅ ¡Notificaciones funcionando!',
-        body: 'Las alertas de recuérdame están activas en tu dispositivo.',
+        body: 'Las alertas de recuérdame están activas. Prueba las acciones rápidas abajo.',
         sound: 'default',
+        data: { taskText: 'Notificación de prueba', action: 'test' },
+        categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,

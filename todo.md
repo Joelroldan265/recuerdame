@@ -80,3 +80,8 @@
 - [x] TTS al abrir app desde notificación: leer el recordatorio en voz alta (foreground + tap)
 
 - [x] Step 1: activar micrófono solo después de que la voz de la app termine de hablar (evitar grabar la voz de la app)
+
+- [x] Step 1: botón "Saltar instrucción" para activar micrófono de inmediato
+- [x] Step 1: cronómetro de grabación en tiempo real (con barra de progreso y auto-stop a 30s)
+- [x] Notificaciones: acción rápida "🎤 Grabar nuevo" y "✅ Completar" en la notificación
+- [x] Notificaciones: texto del recordatorio visible en el cuerpo de la notificación

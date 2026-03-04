@@ -25,6 +25,14 @@ import { speak, stopSpeaking, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora'];
+const MAX_RECORDING_SECONDS = 30;
+
+/** Formatea segundos como "0:05", "1:23" */
+function formatTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 export default function Step1Screen() {
   const router = useRouter();
@@ -34,34 +42,30 @@ export default function Step1Screen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
   // Estado del micrófono: 'idle' | 'speaking' | 'ready' | 'recording'
-  // - 'idle':      estado inicial
-  // - 'speaking':  la app está hablando (no se puede grabar)
-  // - 'ready':     la app terminó de hablar, el micrófono está listo
-  // - 'recording': el usuario está grabando
   const [micState, setMicState] = useState<'idle' | 'speaking' | 'ready' | 'recording'>('idle');
-  const isMountedRef = useRef(true);
 
+  // Cronómetro de grabación
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isMountedRef = useRef(true);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
 
+  // ─── Inicialización ────────────────────────────────────────────────────────
   useEffect(() => {
     isMountedRef.current = true;
 
-    // Paso 1: hablar el mensaje de bienvenida del paso
     if (settings.soundEnabled) {
       setMicState('speaking');
       speak(VOICE_MESSAGES.step1, settings.voiceSpeed, () => {
-        // Paso 2: cuando la voz termina, el micrófono queda listo
-        if (isMountedRef.current) {
-          setMicState('ready');
-        }
+        if (isMountedRef.current) setMicState('ready');
       });
     } else {
-      // Si el sonido está desactivado, el micrófono queda listo de inmediato
       setMicState('ready');
     }
 
-    // Paso 3: solicitar permisos de micrófono de forma lazy (no bloquea)
+    // Solicitar permisos de micrófono de forma lazy
     const timer = setTimeout(async () => {
       if (!isMountedRef.current) return;
       try {
@@ -77,7 +81,7 @@ export default function Step1Screen() {
             );
           }
         } else {
-          if (isMountedRef.current) setHasPermission(false); // web: usar modo texto
+          if (isMountedRef.current) setHasPermission(false);
         }
       } catch {
         if (isMountedRef.current) setHasPermission(false);
@@ -88,35 +92,68 @@ export default function Step1Screen() {
       isMountedRef.current = false;
       clearTimeout(timer);
       stopSpeaking();
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
-  const handlePressIn = useCallback(async () => {
-    // Bloquear grabación si la app todavía está hablando
-    if (micState === 'speaking') {
-      return; // silenciosamente ignorar — la instrucción de voz aún no terminó
+  // ─── Cronómetro ────────────────────────────────────────────────────────────
+  const startTimer = useCallback(() => {
+    setRecordingSeconds(0);
+    timerRef.current = setInterval(() => {
+      setRecordingSeconds(prev => {
+        if (prev >= MAX_RECORDING_SECONDS - 1) {
+          // Detener automáticamente al llegar al límite
+          return prev + 1;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
+  }, []);
+
+  // Auto-stop al llegar al límite máximo
+  useEffect(() => {
+    if (recordingSeconds >= MAX_RECORDING_SECONDS && micState === 'recording') {
+      handlePressOut();
+    }
+  }, [recordingSeconds]);
+
+  // ─── Saltar instrucción ────────────────────────────────────────────────────
+  const handleSkipInstruction = useCallback(() => {
+    stopSpeaking();
+    if (isMountedRef.current) setMicState('ready');
+  }, []);
+
+  // ─── Grabación ─────────────────────────────────────────────────────────────
+  const handlePressIn = useCallback(async () => {
+    if (micState === 'speaking') return;
     if (!hasPermission) {
       Alert.alert('Sin permiso', 'No se puede grabar sin permiso de micrófono.');
       return;
     }
     try {
-      // Detener cualquier TTS residual antes de grabar
       stopSpeaking();
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setMicState('recording');
+      startTimer();
     } catch (err) {
       console.error('[Step1] Error starting recording:', err);
     }
-  }, [micState, hasPermission, audioRecorder]);
+  }, [micState, hasPermission, audioRecorder, startTimer]);
 
   const handlePressOut = useCallback(async () => {
     if (!recorderState.isRecording) return;
     try {
+      stopTimer();
       await audioRecorder.stop();
       setMicState('idle');
-      // Navegar a paso 2 con el URI del audio
       const uri = audioRecorder.uri;
       if (uri) {
         router.push({
@@ -126,9 +163,10 @@ export default function Step1Screen() {
       }
     } catch (err) {
       console.error('[Step1] Error stopping recording:', err);
+      stopTimer();
       setMicState('ready');
     }
-  }, [recorderState.isRecording, audioRecorder, router]);
+  }, [recorderState.isRecording, audioRecorder, router, stopTimer]);
 
   const handleTextContinue = useCallback(() => {
     const trimmed = textInput.trim();
@@ -142,17 +180,19 @@ export default function Step1Screen() {
     });
   }, [textInput, router]);
 
-  // Instrucción visual según el estado del micrófono
+  // ─── Instrucción visual ────────────────────────────────────────────────────
   const micInstruction = (() => {
     if (micState === 'speaking') return '🔊 Escucha las instrucciones...';
-    if (micState === 'recording') return '🔴 Grabando... suelta para terminar';
+    if (micState === 'recording') return `🔴 Grabando ${formatTime(recordingSeconds)} — suelta para terminar`;
     if (hasPermission === false) return '❌ Sin permiso de micrófono';
     if (micState === 'ready') return '✅ Listo — mantén pulsado para grabar';
     return 'Mantén pulsado para grabar';
   })();
 
-  // El micrófono está deshabilitado mientras la app habla o no hay permiso
   const micDisabled = micState === 'speaking' || hasPermission === false;
+
+  // Color del cronómetro: verde → amarillo → rojo según tiempo
+  const timerColor = recordingSeconds >= 25 ? '#EF4444' : recordingSeconds >= 15 ? '#F59E0B' : '#0E9F6E';
 
   return (
     <ScreenContainer>
@@ -188,12 +228,40 @@ export default function Step1Screen() {
 
         {mode === 'voice' ? (
           <View style={styles.voiceContainer}>
-            {/* Indicador de estado de la app hablando */}
+
+            {/* Banner: app hablando + botón saltar */}
             {micState === 'speaking' && (
               <View style={styles.speakingBanner}>
                 <Text style={styles.speakingBannerText}>
-                  🔊 Espera a que termine la instrucción...
+                  🔊 Escucha la instrucción...
                 </Text>
+                <Pressable
+                  onPress={handleSkipInstruction}
+                  style={styles.skipBtn}
+                >
+                  <Text style={styles.skipBtnText}>Saltar ⏭</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Cronómetro de grabación */}
+            {micState === 'recording' && (
+              <View style={styles.timerContainer}>
+                <Text style={[styles.timerText, { color: timerColor }]}>
+                  {formatTime(recordingSeconds)}
+                </Text>
+                <View style={styles.timerBar}>
+                  <View
+                    style={[
+                      styles.timerBarFill,
+                      {
+                        width: `${(recordingSeconds / MAX_RECORDING_SECONDS) * 100}%` as `${number}%`,
+                        backgroundColor: timerColor,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.timerLimit}>máx. {MAX_RECORDING_SECONDS}s</Text>
               </View>
             )}
 
@@ -204,13 +272,16 @@ export default function Step1Screen() {
               size={130}
               disabled={micDisabled}
             />
+
             <Text style={[
               styles.voiceInstruction,
               micState === 'ready' && styles.voiceInstructionReady,
               micState === 'speaking' && styles.voiceInstructionSpeaking,
+              micState === 'recording' && styles.voiceInstructionRecording,
             ]}>
               {micInstruction}
             </Text>
+
             {hasPermission === false && (
               <BigButton
                 label="Usar modo texto"
@@ -308,24 +379,64 @@ const styles = StyleSheet.create({
   },
   voiceContainer: {
     alignItems: 'center',
-    paddingVertical: 24,
-    gap: 20,
+    paddingVertical: 16,
+    gap: 16,
   },
   speakingBanner: {
     backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     borderWidth: 1,
     borderColor: '#BFDBFE',
     width: '100%',
     alignItems: 'center',
+    gap: 10,
   },
   speakingBannerText: {
     fontSize: 16,
     color: '#1D4ED8',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  skipBtn: {
+    backgroundColor: '#1D4ED8',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+  },
+  skipBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  timerContainer: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+  },
+  timerText: {
+    fontSize: 42,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 2,
+  },
+  timerBar: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  timerBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  timerLimit: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontWeight: '500',
   },
   voiceInstruction: {
     fontSize: 18,
@@ -340,6 +451,10 @@ const styles = StyleSheet.create({
   voiceInstructionSpeaking: {
     color: '#1D4ED8',
     fontWeight: '600',
+  },
+  voiceInstructionRecording: {
+    color: '#EF4444',
+    fontWeight: '700',
   },
   fallbackBtn: {
     marginTop: 8,

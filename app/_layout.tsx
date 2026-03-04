@@ -23,9 +23,12 @@ import { SettingsProvider } from "@/lib/settings-context";
 import {
   addNotificationResponseListener,
   addNotificationReceivedListener,
+  NOTIFICATION_ACTION_COMPLETE,
+  NOTIFICATION_ACTION_RECORD,
 } from "@/lib/notification-service";
 import { speak } from "@/lib/speech-service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -37,6 +40,7 @@ export const unstable_settings = {
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
+  const router = useRouter();
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
@@ -49,24 +53,51 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
-    // Cuando el usuario TOCA la notificación (abre la app desde ella)
+    // Helper para leer el texto en voz alta
+    const speakTaskText = async (text: string) => {
+      try {
+        const raw = await AsyncStorage.getItem('recuerdame_settings');
+        const settings = raw ? JSON.parse(raw) : null;
+        const speed = settings?.voiceSpeed ?? 1.0;
+        const soundEnabled = settings?.soundEnabled ?? true;
+        if (soundEnabled && text) speak(text, speed);
+      } catch {
+        if (text) speak(text, 1.0);
+      }
+    };
+
+    // Cuando el usuario TOCA la notificación o usa una acción rápida
     const responseSub = addNotificationResponseListener((response) => {
-      const taskText = response.notification.request.content.body;
+      const actionId = response.actionIdentifier;
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const taskText = (data?.taskText ?? response.notification.request.content.body ?? '') as string;
+
+      if (actionId === NOTIFICATION_ACTION_RECORD) {
+        // Acción rápida: abrir flujo de grabación directamente
+        setTimeout(() => {
+          router.push('/create/step1');
+        }, 300);
+        return;
+      }
+
+      if (actionId === NOTIFICATION_ACTION_COMPLETE) {
+        // Acción rápida: completar tarea silenciosamente (sin abrir la app)
+        // La tarea se marcará como completada la próxima vez que la app se abra
+        // guardamos el taskId en AsyncStorage para procesarlo al abrir
+        const taskId = data?.taskId as string | undefined;
+        if (taskId) {
+          AsyncStorage.getItem('recuerdame_pending_complete').then((raw) => {
+            const pending: string[] = raw ? JSON.parse(raw) : [];
+            pending.push(taskId);
+            AsyncStorage.setItem('recuerdame_pending_complete', JSON.stringify(pending));
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      // Acción por defecto: tocar la notificación → leer en voz alta
       if (taskText) {
-        // Leer el texto en voz alta con un pequeño delay para que el audio se inicialice
-        setTimeout(async () => {
-          try {
-            const raw = await AsyncStorage.getItem('recuerdame_settings');
-            const settings = raw ? JSON.parse(raw) : null;
-            const speed = settings?.voiceSpeed ?? 1.0;
-            const soundEnabled = settings?.soundEnabled ?? true;
-            if (soundEnabled) {
-              speak(taskText, speed);
-            }
-          } catch {
-            speak(taskText, 1.0);
-          }
-        }, 800);
+        setTimeout(() => speakTaskText(taskText), 800);
       }
     });
 
