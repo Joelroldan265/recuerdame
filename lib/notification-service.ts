@@ -3,13 +3,14 @@
  *
  * Servicio de notificaciones locales para recuérdame.
  *
- * Correcciones v4:
- * 1. Canal Android con lockscreenVisibility PUBLIC, bypassDnd, channelId en trigger
- * 2. sound:true (formato correcto SDK 54)
- * 3. Categoría con 5 acciones rápidas:
- *    - ✅ Completar (sin abrir app)
- *    - ⏰ +5 min, ⏰ +10 min, ⏰ +15 min (posponer, sin abrir app)
- *    - 🎙️ Grabar nuevo (abre app en flujo de grabación)
+ * Comportamiento por prioridad:
+ * - ALTA    → canal ALARM (importancia MAX, bypassDnd, vibración larga, sonido)
+ *             El sistema operativo la trata como alarma real.
+ * - MEDIA   → canal REMINDER (importancia HIGH, sonido, sin bypassDnd)
+ * - BAJA    → canal SILENT (importancia DEFAULT, sin sonido, solo banner)
+ *
+ * Acciones rápidas en la notificación:
+ *   ✅ Completar | ⏰ +5 min | ⏰ +10 min | ⏰ +15 min | 🎙️ Grabar nuevo
  */
 
 import { Platform } from 'react-native';
@@ -24,8 +25,20 @@ export const NOTIFICATION_ACTION_SNOOZE_10  = 'snooze_10';
 export const NOTIFICATION_ACTION_SNOOZE_15  = 'snooze_15';
 export const NOTIFICATION_ACTION_RECORD     = 'record';
 
-// ── Canal de Android ──────────────────────────────────────────────────────────
-const ANDROID_CHANNEL_ID = 'recuerdame-reminders';
+// ── Canales Android ───────────────────────────────────────────────────────────
+/** Canal de ALARMA — prioridad alta: bypassDnd, vibración larga, sonido máximo */
+const ANDROID_CHANNEL_ALARM    = 'recuerdame-alarm';
+/** Canal de RECORDATORIO — prioridad media: sonido normal, sin bypassDnd */
+const ANDROID_CHANNEL_REMINDER = 'recuerdame-reminders';
+/** Canal SILENCIOSO — prioridad baja: solo banner, sin sonido */
+const ANDROID_CHANNEL_SILENT   = 'recuerdame-silent';
+
+/** Devuelve el channelId correcto según la prioridad de la tarea */
+function channelForPriority(priority: string): string {
+  if (priority === 'high')   return ANDROID_CHANNEL_ALARM;
+  if (priority === 'medium') return ANDROID_CHANNEL_REMINDER;
+  return ANDROID_CHANNEL_SILENT;
+}
 
 // ── Handler global ────────────────────────────────────────────────────────────
 Notifications.setNotificationHandler({
@@ -86,7 +99,7 @@ async function registerNotificationCategories(): Promise<void> {
 }
 
 /**
- * Inicializa el canal de Android, registra categorías y solicita permisos.
+ * Crea los 3 canales Android y solicita permisos.
  * Idempotente — seguro llamarlo múltiples veces.
  */
 export async function initNotificationsLazy(): Promise<boolean> {
@@ -94,17 +107,46 @@ export async function initNotificationsLazy(): Promise<boolean> {
 
   try {
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-        name: 'Recordatorios',
-        description: 'Alertas de tus recordatorios de recuérdame',
+      // Canal ALARMA — prioridad alta
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ALARM, {
+        name: '🔴 Recordatorios urgentes (Alarma)',
+        description: 'Alarma para recordatorios de prioridad alta. Suena aunque el teléfono esté en silencio.',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 400, 200, 400],
-        lightColor: '#1A56DB',
+        vibrationPattern: [0, 500, 200, 500, 200, 500],  // vibración larga y repetida
+        lightColor: '#EF4444',
         sound: 'default',
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true,
+        bypassDnd: true,   // ← pasa el modo No Molestar
+      });
+
+      // Canal RECORDATORIO — prioridad media
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_REMINDER, {
+        name: '🟡 Recordatorios',
+        description: 'Notificaciones estándar para recordatorios de prioridad media.',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+        lightColor: '#F59E0B',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+      });
+
+      // Canal SILENCIOSO — prioridad baja
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_SILENT, {
+        name: '🟢 Recordatorios suaves',
+        description: 'Notificaciones silenciosas para recordatorios de prioridad baja.',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        vibrationPattern: [0, 100],
+        lightColor: '#22C55E',
+        sound: undefined,   // sin sonido
+        enableVibrate: false,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
       });
     }
 
@@ -156,9 +198,41 @@ function nextOccurrence(hour: number, minute: number): Date {
 }
 
 function priorityEmoji(priority: string): string {
-  if (priority === 'high') return '🔴';
+  if (priority === 'high')   return '🔴';
   if (priority === 'medium') return '🟡';
   return '🟢';
+}
+
+/**
+ * Construye el content de la notificación según la prioridad:
+ * - Alta   → sonido + título con "⚠️ URGENTE"
+ * - Media  → sonido normal
+ * - Baja   → sin sonido, solo banner
+ */
+function buildNotificationContent(
+  task: Task,
+  settings: Settings,
+  overrideTitle?: string,
+  extraData?: Record<string, unknown>,
+): Notifications.NotificationContentInput {
+  const emoji = priorityEmoji(task.priority);
+  const isHigh = task.priority === 'high';
+  const isLow  = task.priority === 'low';
+
+  const title = overrideTitle ?? (
+    isHigh
+      ? `${emoji} ⚠️ URGENTE — Recordatorio`
+      : `${emoji} Recordatorio`
+  );
+
+  return {
+    title,
+    body: task.text,
+    data: { taskId: task.id, taskText: task.text, action: 'reminder', ...extraData },
+    // Alta y media reproducen sonido si está habilitado; baja nunca
+    sound: (!isLow && settings.soundEnabled) ? true : false,
+    categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
+  };
 }
 
 // ── Programar notificación principal ─────────────────────────────────────────
@@ -171,9 +245,10 @@ export async function scheduleTaskNotification(
     const hasPermission = await initNotificationsLazy();
     if (!hasPermission) return null;
 
-    if (settings.doNotDisturbEnabled) {
+    // Respetar "No molestar" solo para prioridad media y baja
+    if (settings.doNotDisturbEnabled && task.priority !== 'high') {
       const { hour, minute } = task.reminderTime;
-      const taskMins = hour * 60 + minute;
+      const taskMins  = hour * 60 + minute;
       const startMins = settings.doNotDisturbStart.hour * 60 + settings.doNotDisturbStart.minute;
       const endMins   = settings.doNotDisturbEnd.hour   * 60 + settings.doNotDisturbEnd.minute;
       const inRange   = startMins <= endMins
@@ -183,22 +258,22 @@ export async function scheduleTaskNotification(
     }
 
     const { hour, minute } = task.reminderTime;
-    const emoji = priorityEmoji(task.priority);
+    const channelId = channelForPriority(task.priority);
 
     let trigger: Notifications.NotificationTriggerInput;
 
     switch (task.repeatType) {
       case 'daily':
-        trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY,   hour, minute, channelId: ANDROID_CHANNEL_ID };
+        trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY,   hour, minute, channelId };
         break;
       case 'weekly': {
         const weekday = new Date().getDay() + 1;
-        trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY,  weekday, hour, minute, channelId: ANDROID_CHANNEL_ID };
+        trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY,  weekday, hour, minute, channelId };
         break;
       }
       case 'monthly': {
         const day = new Date().getDate();
-        trigger = { type: Notifications.SchedulableTriggerInputTypes.MONTHLY, day, hour, minute, channelId: ANDROID_CHANNEL_ID };
+        trigger = { type: Notifications.SchedulableTriggerInputTypes.MONTHLY, day, hour, minute, channelId };
         break;
       }
       case 'custom': {
@@ -210,25 +285,19 @@ export async function scheduleTaskNotification(
         } else {
           targetDate = nextOccurrence(hour, minute);
         }
-        trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: targetDate, channelId: ANDROID_CHANNEL_ID };
+        trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: targetDate, channelId };
         break;
       }
       default:
-        trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: nextOccurrence(hour, minute), channelId: ANDROID_CHANNEL_ID };
+        trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: nextOccurrence(hour, minute), channelId };
     }
 
     const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `${emoji} Recordatorio`,
-        body: task.text,
-        data: { taskId: task.id, taskText: task.text, action: 'reminder' },
-        sound: settings.soundEnabled ? true : false,
-        categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
-      },
+      content: buildNotificationContent(task, settings),
       trigger,
     });
 
-    console.log(`[NotifService] ✅ Programada: ${notificationId}`);
+    console.log(`[NotifService] ✅ Programada [${task.priority}] canal=${channelId}: ${notificationId}`);
     return notificationId;
   } catch (err) {
     console.error('[NotifService] Error al programar:', err);
@@ -238,7 +307,6 @@ export async function scheduleTaskNotification(
 
 /**
  * Pospone una tarea X minutos desde ahora y programa una nueva notificación.
- * Guarda el ID en AsyncStorage para que el TaskContext lo actualice al abrir la app.
  */
 export async function snoozeTaskNotification(
   taskId: string,
@@ -253,19 +321,21 @@ export async function snoozeTaskNotification(
 
     const snoozeDate = new Date(Date.now() + minutes * 60 * 1000);
     const emoji = priorityEmoji(taskPriority);
+    const channelId = channelForPriority(taskPriority);
+    const isLow = taskPriority === 'low';
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: `${emoji} Recordatorio (pospuesto ${minutes} min)`,
         body: taskText,
         data: { taskId, taskText, action: 'reminder', snoozed: true },
-        sound: soundEnabled ? true : false,
+        sound: (!isLow && soundEnabled) ? true : false,
         categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: snoozeDate,
-        channelId: ANDROID_CHANNEL_ID,
+        channelId,
       },
     });
 
@@ -286,7 +356,7 @@ export async function scheduleSnoozeNotifications(
     const hasPermission = await initNotificationsLazy();
     if (!hasPermission) return [];
 
-    const emoji = priorityEmoji(task.priority);
+    const channelId = channelForPriority(task.priority);
     const ids: string[] = [];
     const SNOOZE_COUNT = 3;
     const base = nextOccurrence(task.reminderTime.hour, task.reminderTime.minute);
@@ -294,17 +364,14 @@ export async function scheduleSnoozeNotifications(
     for (let i = 1; i <= SNOOZE_COUNT; i++) {
       const snoozeDate = new Date(base.getTime() + i * task.snoozeInterval * 60 * 1000);
       const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `${emoji} Recordatorio (${i}/${SNOOZE_COUNT})`,
-          body: task.text,
-          data: { taskId: task.id, taskText: task.text, snooze: true, snoozeIndex: i, action: 'reminder' },
-          sound: settings.soundEnabled ? true : false,
-          categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
-        },
+        content: buildNotificationContent(task, settings,
+          `${priorityEmoji(task.priority)} Recordatorio (${i}/${SNOOZE_COUNT})`,
+          { snooze: true, snoozeIndex: i },
+        ),
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: snoozeDate,
-          channelId: ANDROID_CHANNEL_ID,
+          channelId,
         },
       });
       ids.push(id);
@@ -321,10 +388,11 @@ export async function scheduleTestNotification(): Promise<string | null> {
     const hasPermission = await initNotificationsLazy();
     if (!hasPermission) return null;
 
+    // La prueba usa el canal de alarma para que sea fácil verificar que funciona
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: '✅ ¡Notificaciones funcionando!',
-        body: 'Prueba las acciones: ✅ Completar, ⏰ Posponer, 🎙️ Grabar nuevo.',
+        title: '🔴 ⚠️ URGENTE — Prueba de alarma',
+        body: '¡Las notificaciones de alta prioridad funcionan correctamente!',
         sound: true,
         data: { taskText: 'Notificación de prueba', taskId: 'test', action: 'test' },
         categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
@@ -332,7 +400,7 @@ export async function scheduleTestNotification(): Promise<string | null> {
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: 5,
-        channelId: ANDROID_CHANNEL_ID,
+        channelId: ANDROID_CHANNEL_ALARM,
       },
     });
     return id;

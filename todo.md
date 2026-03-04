@@ -97,3 +97,6 @@
 - [x] Step 5: sección "¿Con cuánta anticipación te aviso?" con opciones Justo a la hora / 5 / 10 / 15 / 30 min antes (picker/rollbar)
 - [x] Tipos: agregar advanceMinutes a Task
 - [x] Step 6 y success: usar advanceMinutes al programar la notificación (hora real = hora - anticipación)
+
+- [x] Notificaciones: alarma sonora (canal ALARM, bypassDnd, vibración larga) para prioridad alta
+- [x] Notificaciones: notificación estándar (media con sonido, baja sin sonido) para prioridad media y baja
