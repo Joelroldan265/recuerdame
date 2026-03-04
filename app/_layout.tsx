@@ -28,9 +28,10 @@ import {
   NOTIFICATION_ACTION_SNOOZE_5,
   NOTIFICATION_ACTION_SNOOZE_10,
   NOTIFICATION_ACTION_SNOOZE_15,
+  NOTIFICATION_ACTION_SILENCE,
   snoozeTaskNotification,
 } from "@/lib/notification-service";
-import { speak } from "@/lib/speech-service";
+import { speak, stopSpeaking } from "@/lib/speech-service";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 
@@ -141,7 +142,17 @@ export default function RootLayout() {
       const taskId   = (data?.taskId ?? '') as string;
       const taskPriority = (data?.taskPriority ?? 'medium') as string;
 
-      // ── Acción: Grabar nuevo ──────────────────────────────────────────────
+      // ── Acción: Silenciar ─────────────────────────────────────────────
+      if (actionId === NOTIFICATION_ACTION_SILENCE) {
+        // Detener cualquier TTS activo y limpiar el texto pendiente
+        try {
+          stopSpeaking();
+          await AsyncStorage.removeItem(PENDING_SPEAK_KEY);
+        } catch { /* ignorar */ }
+        return;
+      }
+
+      // ── Acción: Grabar nuevo ────────────────────────────────────────────
       if (actionId === NOTIFICATION_ACTION_RECORD) {
         setTimeout(() => router.push('/create/step1'), 300);
         return;

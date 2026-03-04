@@ -105,3 +105,7 @@
 
 - [x] Sonido de alarma real para notificaciones de prioridad alta (alarm.wav generado en assets/sounds/)
 - [x] Canal Android ALARM configurado con sound: 'alarm' (res/raw/alarm.wav), bypassDnd y vibración larga
+
+- [x] Generar urgente.mp3, media.mp3, baja.mp3 con frases habladas (gTTS español)
+- [x] Cada canal Android usa su archivo de voz correspondiente como sonido de notificación
+- [x] Botón "🔇 Silenciar" en la notificación para detener TTS y limpiar texto pendiente

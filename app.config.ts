@@ -93,7 +93,13 @@ const config: ExpoConfig = {
         color: "#1A56DB",
         defaultChannel: "recuerdame-reminders",
         // Sonidos personalizados — se copian a res/raw/ en el APK Android
-        sounds: ["./assets/sounds/alarm.wav"],
+        // Nombres en el canal: 'alarm' | 'urgente' | 'media' | 'baja'
+        sounds: [
+          "./assets/sounds/alarm.wav",
+          "./assets/sounds/urgente.mp3",
+          "./assets/sounds/media.mp3",
+          "./assets/sounds/baja.mp3",
+        ],
       },
     ],
     [

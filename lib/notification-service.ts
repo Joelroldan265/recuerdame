@@ -24,6 +24,7 @@ export const NOTIFICATION_ACTION_SNOOZE_5   = 'snooze_5';
 export const NOTIFICATION_ACTION_SNOOZE_10  = 'snooze_10';
 export const NOTIFICATION_ACTION_SNOOZE_15  = 'snooze_15';
 export const NOTIFICATION_ACTION_RECORD     = 'record';
+export const NOTIFICATION_ACTION_SILENCE    = 'silence';   // Detener el audio de la notificación
 
 // ── Canales Android ───────────────────────────────────────────────────────────
 /** Canal de ALARMA — prioridad alta: bypassDnd, vibración larga, sonido máximo */
@@ -59,7 +60,7 @@ let categoriesRegistered = false;
 
 /**
  * Registra la categoría con acciones rápidas:
- * ✅ Completar | ⏰ +5 min | ⏰ +10 min | ⏰ +15 min | 🎙️ Grabar nuevo
+ * ✅ Completar | 🔇 Silenciar | ⏰ +5 min | ⏰ +10 min | ⏰ +15 min | 🎤️ Grabar nuevo
  */
 async function registerNotificationCategories(): Promise<void> {
   if (categoriesRegistered) return;
@@ -68,6 +69,11 @@ async function registerNotificationCategories(): Promise<void> {
       {
         identifier: NOTIFICATION_ACTION_COMPLETE,
         buttonTitle: '✅ Completar',
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: NOTIFICATION_ACTION_SILENCE,
+        buttonTitle: '🔇 Silenciar',
         options: { opensAppToForeground: false },
       },
       {
@@ -87,12 +93,12 @@ async function registerNotificationCategories(): Promise<void> {
       },
       {
         identifier: NOTIFICATION_ACTION_RECORD,
-        buttonTitle: '🎙️ Grabar nuevo',
+        buttonTitle: '🎤️ Grabar nuevo',
         options: { opensAppToForeground: true },
       },
     ]);
     categoriesRegistered = true;
-    console.log('[NotifService] Categorías registradas con acciones de posponer');
+    console.log('[NotifService] Categorías registradas con acciones de posponer y silenciar');
   } catch (err) {
     console.warn('[NotifService] No se pudieron registrar categorías:', err);
   }
@@ -108,29 +114,32 @@ export async function initNotificationsLazy(): Promise<boolean> {
   try {
     if (Platform.OS === 'android') {
       // Canal ALARMA — prioridad alta
-      // El archivo alarm.wav se copia a res/raw/alarm.wav en el APK por el plugin expo-notifications
-      // En Android, el nombre del sonido es el nombre del archivo sin extensión
+      // Suena: tono de alarma (alarm.wav) + voz "Tienes una tarea urgente" (urgente.mp3)
+      // Android solo puede reproducir UN sonido por notificación.
+      // Usamos 'urgente' (la frase hablada) como sonido del canal.
+      // El tono alarm.wav se reproduce por separado via expo-audio al abrir la app.
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ALARM, {
         name: '🔴 Recordatorios urgentes (Alarma)',
-        description: 'Alarma para recordatorios de prioridad alta. Suena aunque el teléfono esté en silencio.',
+        description: 'Alarma con voz para recordatorios de prioridad alta. Suena aunque el teléfono esté en silencio.',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 200, 500, 200, 500],  // vibración larga y repetida
+        vibrationPattern: [0, 500, 200, 500, 200, 500],
         lightColor: '#EF4444',
-        sound: 'alarm',   // ← nombre del archivo sin extensión (res/raw/alarm.wav)
+        sound: 'urgente',   // ← res/raw/urgente.mp3 — "Tienes una tarea urgente"
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true,   // ← pasa el modo No Molestar
+        bypassDnd: true,
       });
 
       // Canal RECORDATORIO — prioridad media
+      // Suena: voz "Tienes una tarea que aún no es urgente..."
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_REMINDER, {
         name: '🟡 Recordatorios',
-        description: 'Notificaciones estándar para recordatorios de prioridad media.',
+        description: 'Recordatorio con voz para prioridad media.',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 150, 250],
         lightColor: '#F59E0B',
-        sound: 'default',
+        sound: 'media',   // ← res/raw/media.mp3 — "Tienes una tarea que aún no es urgente..."
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -138,13 +147,14 @@ export async function initNotificationsLazy(): Promise<boolean> {
       });
 
       // Canal SILENCIOSO — prioridad baja
+      // Suena: voz suave "Tienes una tarea pendiente que no urge..."
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_SILENT, {
         name: '🟢 Recordatorios suaves',
-        description: 'Notificaciones silenciosas para recordatorios de prioridad baja.',
+        description: 'Recordatorio con voz suave para prioridad baja.',
         importance: Notifications.AndroidImportance.DEFAULT,
         vibrationPattern: [0, 100],
         lightColor: '#22C55E',
-        sound: undefined,   // sin sonido
+        sound: 'baja',   // ← res/raw/baja.mp3 — "Tienes una tarea pendiente que no urge..."
         enableVibrate: false,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -231,12 +241,13 @@ function buildNotificationContent(
     title,
     body: task.text,
     data: { taskId: task.id, taskText: task.text, action: 'reminder', ...extraData },
-    // Alta: sonido de alarma personalizado (alarm.wav en res/raw)
-    // Media: sonido del sistema
-    // Baja: sin sonido
+    // Cada prioridad usa su propio archivo de voz hablada (res/raw/)
+    // Alta   → 'urgente' ("Tienes una tarea urgente")
+    // Media  → 'media'   ("Tienes una tarea que aún no es urgente...")
+    // Baja   → 'baja'    ("Tienes una tarea pendiente que no urge...")
     sound: isHigh
-      ? 'alarm'          // ← nombre del archivo alarm.wav sin extensión
-      : (!isLow && settings.soundEnabled) ? true : false,
+      ? 'urgente'
+      : (!isLow && settings.soundEnabled) ? 'media' : 'baja',
     categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
   };
 }
