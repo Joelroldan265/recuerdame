@@ -5,25 +5,34 @@ import {
   Pressable,
   ScrollView,
   Platform,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
+  PanResponder,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { ScreenContainer } from '@/components/screen-container';
 import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
-import { QUICK_TIMES, SNOOZE_OPTIONS, ADVANCE_OPTIONS, ReminderTime, SnoozeInterval, AdvanceMinutes } from '@/lib/task-types';
+import {
+  QUICK_TIMES,
+  SNOOZE_OPTIONS,
+  ADVANCE_OPTIONS,
+  ReminderTime,
+  SnoozeInterval,
+  AdvanceMinutes,
+} from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
 
-// ── Drum Picker ────────────────────────────────────────────────────────────────
-// Uses a plain ScrollView with snapToInterval. Works reliably on iOS, Android and web.
+// ── Drum Picker (PanResponder — no nested ScrollView) ─────────────────────────
+// Shows 3 items at a time. Drag up/down to change value.
+// Uses PanResponder so it captures gestures independently of the outer ScrollView.
+
 const ITEM_H = 52;
-const VISIBLE = 3; // only 3 items visible (top/center/bottom)
+const VISIBLE = 3;
 const DRUM_H = ITEM_H * VISIBLE;
 
 interface DrumPickerProps {
@@ -35,87 +44,126 @@ interface DrumPickerProps {
 }
 
 function DrumPicker({ items, selectedIndex, onSelect, width = 80, label }: DrumPickerProps) {
-  const scrollRef = useRef<ScrollView>(null);
-  const isDragging = useRef(false);
+  // translateY represents the drag offset (0 = resting)
+  const translateY = useRef(new Animated.Value(0)).current;
+  const dragStart = useRef(0);
+  const lastIndex = useRef(selectedIndex);
 
-  // Scroll to selected item whenever it changes externally (e.g. quick-time tap)
+  // Keep lastIndex in sync when parent changes it (e.g. quick-time tap)
   useEffect(() => {
-    if (!isDragging.current) {
-      scrollRef.current?.scrollTo({ y: selectedIndex * ITEM_H, animated: false });
-    }
-  }, [selectedIndex]);
+    lastIndex.current = selectedIndex;
+    translateY.setValue(0);
+  }, [selectedIndex, translateY]);
 
-  const snapToIndex = useCallback(
-    (offsetY: number, animated = true) => {
-      const raw = Math.round(offsetY / ITEM_H);
-      const clamped = Math.max(0, Math.min(raw, items.length - 1));
-      scrollRef.current?.scrollTo({ y: clamped * ITEM_H, animated });
-      if (clamped !== selectedIndex) {
-        onSelect(clamped);
-        if (Platform.OS !== 'web') Haptics.selectionAsync();
-      }
-    },
-    [items.length, onSelect, selectedIndex],
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        // Always capture the gesture — prevents outer ScrollView from stealing it
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+
+        onPanResponderGrant: () => {
+          dragStart.current = lastIndex.current;
+          translateY.setValue(0);
+        },
+
+        onPanResponderMove: (_, gs) => {
+          translateY.setValue(gs.dy);
+        },
+
+        onPanResponderRelease: (_, gs) => {
+          // How many items did we drag past?
+          const steps = -Math.round(gs.dy / ITEM_H);
+          const next = Math.max(0, Math.min(dragStart.current + steps, items.length - 1));
+
+          // Snap back to 0 with animation
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 200,
+            friction: 20,
+          }).start();
+
+          if (next !== lastIndex.current) {
+            lastIndex.current = next;
+            onSelect(next);
+            if (Platform.OS !== 'web') Haptics.selectionAsync();
+          }
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items.length, onSelect],
   );
 
-  const onScrollEndDrag = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      isDragging.current = false;
-      snapToIndex(e.nativeEvent.contentOffset.y);
-    },
-    [snapToIndex],
-  );
+  // Indices of the three visible items
+  const prevIdx = selectedIndex - 1;
+  const nextIdx = selectedIndex + 1;
 
-  const onMomentumScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      isDragging.current = false;
-      snapToIndex(e.nativeEvent.contentOffset.y);
-    },
-    [snapToIndex],
-  );
+  const getLabel = (i: number) => {
+    if (i < 0 || i >= items.length) return '';
+    return items[i];
+  };
 
   return (
     <View style={{ alignItems: 'center', gap: 4 }}>
       {label ? <Text style={styles.drumLabel}>{label}</Text> : null}
-      <View style={[styles.drumOuter, { width }]}>
-        {/* Selection highlight bar */}
-        <View style={styles.drumHighlight} pointerEvents="none" />
-        {/* Top fade */}
-        <View style={styles.drumFadeTop} pointerEvents="none" />
-        {/* Bottom fade */}
-        <View style={styles.drumFadeBottom} pointerEvents="none" />
 
-        <ScrollView
-          ref={scrollRef}
-          style={{ height: DRUM_H }}
-          contentContainerStyle={{ paddingVertical: ITEM_H }}
-          showsVerticalScrollIndicator={false}
-          snapToInterval={ITEM_H}
-          decelerationRate="fast"
-          scrollEventThrottle={16}
-          onScrollBeginDrag={() => { isDragging.current = true; }}
-          onScrollEndDrag={onScrollEndDrag}
-          onMomentumScrollEnd={onMomentumScrollEnd}
+      <View style={[styles.drumOuter, { width }]} {...panResponder.panHandlers}>
+        {/* Selection highlight */}
+        <View style={styles.drumHighlight} pointerEvents="none" />
+
+        <Animated.View style={{ transform: [{ translateY }] }}>
+          {/* Previous item */}
+          <View style={styles.drumItem}>
+            <Text style={styles.drumItemTextFaded}>{getLabel(prevIdx)}</Text>
+          </View>
+
+          {/* Selected item */}
+          <Pressable
+            style={styles.drumItem}
+            onPress={() => {/* already selected */}}
+          >
+            <Text style={styles.drumItemTextSelected}>{getLabel(selectedIndex)}</Text>
+          </Pressable>
+
+          {/* Next item */}
+          <View style={styles.drumItem}>
+            <Text style={styles.drumItemTextFaded}>{getLabel(nextIdx)}</Text>
+          </View>
+        </Animated.View>
+
+        {/* Tap arrows for +1 / -1 */}
+        <Pressable
+          style={styles.drumArrowTop}
+          onPress={() => {
+            const next = Math.max(0, selectedIndex - 1);
+            if (next !== selectedIndex) {
+              onSelect(next);
+              if (Platform.OS !== 'web') Haptics.selectionAsync();
+            }
+          }}
+          accessibilityLabel={`${label} anterior`}
+          accessibilityRole="button"
         >
-          {items.map((item, i) => {
-            const isSelected = i === selectedIndex;
-            return (
-              <Pressable
-                key={i}
-                onPress={() => {
-                  onSelect(i);
-                  scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
-                  if (Platform.OS !== 'web') Haptics.selectionAsync();
-                }}
-                style={styles.drumItem}
-              >
-                <Text style={[styles.drumItemText, isSelected && styles.drumItemTextSelected]}>
-                  {item}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+          <Text style={styles.drumArrowText}>▲</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.drumArrowBottom}
+          onPress={() => {
+            const next = Math.min(items.length - 1, selectedIndex + 1);
+            if (next !== selectedIndex) {
+              onSelect(next);
+              if (Platform.OS !== 'web') Haptics.selectionAsync();
+            }
+          }}
+          accessibilityLabel={`${label} siguiente`}
+          accessibilityRole="button"
+        >
+          <Text style={styles.drumArrowText}>▼</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -140,10 +188,10 @@ export default function Step5Screen() {
       customYear?: string;
     }>();
 
-  // Default to 9:00 AM so the button is always enabled from the start
-  const [hourIndex,  setHourIndex]  = useState(8);  // index 8 → "09"
-  const [minuteIndex, setMinuteIndex] = useState(0); // "00"
-  const [ampmIndex,  setAmpmIndex]  = useState(0);  // "AM"
+  // Default 9:00 AM — button always enabled
+  const [hourIndex,   setHourIndex]   = useState(8);  // "09"
+  const [minuteIndex, setMinuteIndex] = useState(0);  // "00"
+  const [ampmIndex,   setAmpmIndex]   = useState(0);  // "AM"
   const [selectedQuick, setSelectedQuick] = useState<number | null>(null);
 
   const [snoozeInterval,  setSnoozeInterval]  = useState<SnoozeInterval>(0);
@@ -153,33 +201,20 @@ export default function Step5Screen() {
     if (settings.soundEnabled) speak(VOICE_MESSAGES.step5, settings.voiceSpeed);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Convert 12h picker indices to 24h hour
   const get24Hour = useCallback((hIdx: number, apIdx: number) => {
     const h12 = hIdx + 1;
-    if (apIdx === 0) return h12 === 12 ? 0 : h12;   // AM
-    return h12 === 12 ? 12 : h12 + 12;               // PM
+    if (apIdx === 0) return h12 === 12 ? 0 : h12;
+    return h12 === 12 ? 12 : h12 + 12;
   }, []);
 
-  // Current time derived from picker state (always valid — no null)
   const currentTime: ReminderTime = {
     hour:   get24Hour(hourIndex, ampmIndex),
     minute: minuteIndex,
   };
 
-  const handleHourChange = useCallback((i: number) => {
-    setHourIndex(i);
-    setSelectedQuick(null);
-  }, []);
-
-  const handleMinuteChange = useCallback((i: number) => {
-    setMinuteIndex(i);
-    setSelectedQuick(null);
-  }, []);
-
-  const handleAmpmChange = useCallback((i: number) => {
-    setAmpmIndex(i);
-    setSelectedQuick(null);
-  }, []);
+  const handleHourChange   = useCallback((i: number) => { setHourIndex(i);   setSelectedQuick(null); }, []);
+  const handleMinuteChange = useCallback((i: number) => { setMinuteIndex(i); setSelectedQuick(null); }, []);
+  const handleAmpmChange   = useCallback((i: number) => { setAmpmIndex(i);   setSelectedQuick(null); }, []);
 
   const handleQuickSelect = useCallback((i: number) => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -215,7 +250,12 @@ export default function Step5Screen() {
 
   return (
     <ScreenContainer>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        // Disable outer scroll while user is interacting with pickers
+        // (PanResponder capture handles this automatically)
+      >
         <StepIndicator currentStep={5} totalSteps={6} labels={STEP_LABELS} />
 
         <View style={styles.titleContainer}>
@@ -251,13 +291,14 @@ export default function Step5Screen() {
         {/* Drum Picker */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Hora personalizada</Text>
+          <Text style={styles.sectionSub}>Arrastra arriba/abajo o usa las flechas ▲▼</Text>
           <View style={styles.drumRow}>
             <DrumPicker
               label="Hora"
               items={HOURS_12}
               selectedIndex={hourIndex}
               onSelect={handleHourChange}
-              width={76}
+              width={80}
             />
             <Text style={styles.colon}>:</Text>
             <DrumPicker
@@ -265,14 +306,14 @@ export default function Step5Screen() {
               items={MINUTES}
               selectedIndex={minuteIndex}
               onSelect={handleMinuteChange}
-              width={76}
+              width={80}
             />
             <DrumPicker
               label="AM/PM"
               items={AMPM}
               selectedIndex={ampmIndex}
               onSelect={handleAmpmChange}
-              width={76}
+              width={80}
             />
           </View>
         </View>
@@ -391,21 +432,10 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingBottom: 40,
   },
-  titleContainer: {
-    gap: 4,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#11181C',
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#687076',
-  },
-  section: {
-    gap: 10,
-  },
+  titleContainer: { gap: 4 },
+  title: { fontSize: 22, fontWeight: '700', color: '#11181C' },
+  subtitle: { fontSize: 15, color: '#687076' },
+  section: { gap: 10 },
   sectionLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -413,18 +443,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  sectionSub: {
-    fontSize: 13,
-    color: '#687076',
-    marginTop: -4,
-  },
+  sectionSub: { fontSize: 13, color: '#687076', marginTop: -4 },
 
   // Quick times
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   quickBtn: {
     paddingHorizontal: 18,
     paddingVertical: 10,
@@ -433,20 +455,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E5E7EB',
   },
-  quickBtnActive: {
-    backgroundColor: '#EBF5FF',
-    borderColor: '#1A56DB',
-  },
-  quickBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  quickBtnTextActive: {
-    color: '#1A56DB',
-  },
+  quickBtnActive: { backgroundColor: '#EBF5FF', borderColor: '#1A56DB' },
+  quickBtnText: { fontSize: 15, fontWeight: '600', color: '#374151' },
+  quickBtnTextActive: { color: '#1A56DB' },
 
-  // Drum picker row
+  // Drum picker
   drumRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -462,7 +475,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: '#374151',
-    marginBottom: ITEM_H / 2 - 4,
+    marginBottom: ITEM_H / 2 + 8,
     paddingHorizontal: 2,
   },
   drumLabel: {
@@ -471,13 +484,15 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 2,
   },
   drumOuter: {
     height: DRUM_H,
     overflow: 'hidden',
-    borderRadius: 10,
+    borderRadius: 12,
     position: 'relative',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   drumHighlight: {
     position: 'absolute',
@@ -485,47 +500,51 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: ITEM_H,
-    backgroundColor: 'rgba(26, 86, 219, 0.08)',
+    backgroundColor: 'rgba(26, 86, 219, 0.07)',
     borderTopWidth: 1.5,
     borderBottomWidth: 1.5,
     borderColor: '#1A56DB',
-    borderRadius: 8,
     zIndex: 1,
   },
-  drumFadeTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: ITEM_H,
-    backgroundColor: 'rgba(249,250,251,0.85)',
-    zIndex: 2,
-    pointerEvents: 'none',
-  } as object,
-  drumFadeBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: ITEM_H,
-    backgroundColor: 'rgba(249,250,251,0.85)',
-    zIndex: 2,
-    pointerEvents: 'none',
-  } as object,
   drumItem: {
     height: ITEM_H,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  drumItemText: {
-    fontSize: 22,
+  drumItemTextFaded: {
+    fontSize: 18,
     fontWeight: '400',
-    color: '#9CA3AF',
+    color: '#D1D5DB',
   },
   drumItemTextSelected: {
     fontSize: 26,
     fontWeight: '700',
     color: '#1A56DB',
+  },
+  drumArrowTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: ITEM_H,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  drumArrowBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: ITEM_H,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  drumArrowText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '600',
   },
 
   // Selected display
@@ -538,21 +557,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
-  selectedLabel: {
-    fontSize: 13,
-    color: '#1A56DB',
-    fontWeight: '500',
-  },
-  selectedTime: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A56DB',
-  },
+  selectedLabel: { fontSize: 13, color: '#1A56DB', fontWeight: '500' },
+  selectedTime: { fontSize: 28, fontWeight: '700', color: '#1A56DB' },
 
   // Option rows (advance)
-  advanceList: {
-    gap: 8,
-  },
+  advanceList: { gap: 8 },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -563,10 +572,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E5E7EB',
   },
-  optionRowActive: {
-    backgroundColor: '#EBF5FF',
-    borderColor: '#1A56DB',
-  },
+  optionRowActive: { backgroundColor: '#EBF5FF', borderColor: '#1A56DB' },
   optionDot: {
     width: 18,
     height: 18,
@@ -575,38 +581,15 @@ const styles = StyleSheet.create({
     borderColor: '#D1D5DB',
     backgroundColor: '#fff',
   },
-  optionDotActive: {
-    borderColor: '#1A56DB',
-    backgroundColor: '#1A56DB',
-  },
-  optionLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  optionLabelActive: {
-    color: '#1A56DB',
-  },
-  optionDesc: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 1,
-  },
-  optionDescActive: {
-    color: '#60A5FA',
-  },
-  checkmark: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1A56DB',
-  },
+  optionDotActive: { borderColor: '#1A56DB', backgroundColor: '#1A56DB' },
+  optionLabel: { fontSize: 15, fontWeight: '600', color: '#374151' },
+  optionLabelActive: { color: '#1A56DB' },
+  optionDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
+  optionDescActive: { color: '#60A5FA' },
+  checkmark: { fontSize: 16, fontWeight: '700', color: '#1A56DB' },
 
-  // Snooze grid
-  snoozeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
+  // Snooze
+  snoozeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   snoozeBtn: {
     flex: 1,
     minWidth: '44%',
@@ -618,26 +601,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  snoozeBtnActive: {
-    backgroundColor: '#EBF5FF',
-    borderColor: '#1A56DB',
-  },
-  snoozeBtnLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  snoozeBtnLabelActive: {
-    color: '#1A56DB',
-  },
-  snoozeBtnDesc: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-  snoozeBtnDescActive: {
-    color: '#60A5FA',
-  },
+  snoozeBtnActive: { backgroundColor: '#EBF5FF', borderColor: '#1A56DB' },
+  snoozeBtnLabel: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  snoozeBtnLabelActive: { color: '#1A56DB' },
+  snoozeBtnDesc: { fontSize: 11, color: '#9CA3AF', textAlign: 'center' },
+  snoozeBtnDescActive: { color: '#60A5FA' },
 
   // Info box
   infoBox: {
@@ -648,9 +616,5 @@ const styles = StyleSheet.create({
     borderColor: '#BBF7D0',
     marginTop: 4,
   },
-  infoText: {
-    fontSize: 13,
-    color: '#065F46',
-    lineHeight: 18,
-  },
+  infoText: { fontSize: 13, color: '#065F46', lineHeight: 18 },
 });

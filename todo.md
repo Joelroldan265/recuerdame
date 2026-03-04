@@ -148,3 +148,9 @@
 - [x] Scroll picker no funciona: todos los números visibles, no giran, botón Siguiente no responde
 - [x] Reescribir con ScrollView snap (DrumPicker) para horas, minutos y AM/PM
 - [x] Botón Siguiente siempre habilitado (hora por defecto 9:00 AM)
+
+## Bug: Picker hora Step 5 (v2)
+
+- [x] DrumPicker con ScrollView anidado: el scroll mueve la pantalla en lugar del picker
+- [x] Reescribir picker sin ScrollView anidado (PanResponder + flechas ▲▼)
+- [x] Auditoría completa de la app antes del checkpoint
