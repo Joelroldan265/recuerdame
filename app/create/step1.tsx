@@ -21,7 +21,7 @@ import { ScreenContainer } from '@/components/screen-container';
 import { MicButton } from '@/components/mic-button';
 import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
-import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
+import { speak, stopSpeaking, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora'];
@@ -32,23 +32,43 @@ export default function Step1Screen() {
   const [mode, setMode] = useState<'voice' | 'text'>('voice');
   const [textInput, setTextInput] = useState('');
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+
+  // Estado del micrófono: 'idle' | 'speaking' | 'ready' | 'recording'
+  // - 'idle':      estado inicial
+  // - 'speaking':  la app está hablando (no se puede grabar)
+  // - 'ready':     la app terminó de hablar, el micrófono está listo
+  // - 'recording': el usuario está grabando
+  const [micState, setMicState] = useState<'idle' | 'speaking' | 'ready' | 'recording'>('idle');
+  const isMountedRef = useRef(true);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
+    // Paso 1: hablar el mensaje de bienvenida del paso
     if (settings.soundEnabled) {
-      speak(VOICE_MESSAGES.step1, settings.voiceSpeed);
+      setMicState('speaking');
+      speak(VOICE_MESSAGES.step1, settings.voiceSpeed, () => {
+        // Paso 2: cuando la voz termina, el micrófono queda listo
+        if (isMountedRef.current) {
+          setMicState('ready');
+        }
+      });
+    } else {
+      // Si el sonido está desactivado, el micrófono queda listo de inmediato
+      setMicState('ready');
     }
 
-    // Solicitar permisos de micrófono de forma lazy
+    // Paso 3: solicitar permisos de micrófono de forma lazy (no bloquea)
     const timer = setTimeout(async () => {
+      if (!isMountedRef.current) return;
       try {
         if (Platform.OS !== 'web') {
           await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
           const { granted } = await requestRecordingPermissionsAsync();
-          setHasPermission(granted);
+          if (isMountedRef.current) setHasPermission(granted);
           if (!granted) {
             Alert.alert(
               'Permiso de micrófono',
@@ -57,39 +77,45 @@ export default function Step1Screen() {
             );
           }
         } else {
-          setHasPermission(false); // web: usar modo texto
+          if (isMountedRef.current) setHasPermission(false); // web: usar modo texto
         }
       } catch {
-        setHasPermission(false);
+        if (isMountedRef.current) setHasPermission(false);
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(timer);
+      stopSpeaking();
+    };
   }, []);
 
   const handlePressIn = useCallback(async () => {
+    // Bloquear grabación si la app todavía está hablando
+    if (micState === 'speaking') {
+      return; // silenciosamente ignorar — la instrucción de voz aún no terminó
+    }
     if (!hasPermission) {
       Alert.alert('Sin permiso', 'No se puede grabar sin permiso de micrófono.');
       return;
     }
     try {
+      // Detener cualquier TTS residual antes de grabar
+      stopSpeaking();
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
-      if (settings.soundEnabled) {
-        speak(VOICE_MESSAGES.recording, settings.voiceSpeed);
-      }
+      setMicState('recording');
     } catch (err) {
       console.error('[Step1] Error starting recording:', err);
     }
-  }, [hasPermission, audioRecorder, settings]);
+  }, [micState, hasPermission, audioRecorder]);
 
   const handlePressOut = useCallback(async () => {
     if (!recorderState.isRecording) return;
     try {
       await audioRecorder.stop();
-      if (settings.soundEnabled) {
-        speak(VOICE_MESSAGES.recordingStop, settings.voiceSpeed);
-      }
+      setMicState('idle');
       // Navegar a paso 2 con el URI del audio
       const uri = audioRecorder.uri;
       if (uri) {
@@ -100,8 +126,9 @@ export default function Step1Screen() {
       }
     } catch (err) {
       console.error('[Step1] Error stopping recording:', err);
+      setMicState('ready');
     }
-  }, [recorderState.isRecording, audioRecorder, settings, router]);
+  }, [recorderState.isRecording, audioRecorder, router]);
 
   const handleTextContinue = useCallback(() => {
     const trimmed = textInput.trim();
@@ -114,6 +141,18 @@ export default function Step1Screen() {
       params: { audioUri: '', text: trimmed },
     });
   }, [textInput, router]);
+
+  // Instrucción visual según el estado del micrófono
+  const micInstruction = (() => {
+    if (micState === 'speaking') return '🔊 Escucha las instrucciones...';
+    if (micState === 'recording') return '🔴 Grabando... suelta para terminar';
+    if (hasPermission === false) return '❌ Sin permiso de micrófono';
+    if (micState === 'ready') return '✅ Listo — mantén pulsado para grabar';
+    return 'Mantén pulsado para grabar';
+  })();
+
+  // El micrófono está deshabilitado mientras la app habla o no hay permiso
+  const micDisabled = micState === 'speaking' || hasPermission === false;
 
   return (
     <ScreenContainer>
@@ -149,19 +188,28 @@ export default function Step1Screen() {
 
         {mode === 'voice' ? (
           <View style={styles.voiceContainer}>
+            {/* Indicador de estado de la app hablando */}
+            {micState === 'speaking' && (
+              <View style={styles.speakingBanner}>
+                <Text style={styles.speakingBannerText}>
+                  🔊 Espera a que termine la instrucción...
+                </Text>
+              </View>
+            )}
+
             <MicButton
               isRecording={recorderState.isRecording}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               size={130}
-              disabled={hasPermission === false}
+              disabled={micDisabled}
             />
-            <Text style={styles.voiceInstruction}>
-              {recorderState.isRecording
-                ? '🔴 Grabando... suelta para terminar'
-                : hasPermission === false
-                ? '❌ Sin permiso de micrófono'
-                : 'Mantén pulsado para grabar'}
+            <Text style={[
+              styles.voiceInstruction,
+              micState === 'ready' && styles.voiceInstructionReady,
+              micState === 'speaking' && styles.voiceInstructionSpeaking,
+            ]}>
+              {micInstruction}
             </Text>
             {hasPermission === false && (
               <BigButton
@@ -263,11 +311,35 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     gap: 20,
   },
+  speakingBanner: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    width: '100%',
+    alignItems: 'center',
+  },
+  speakingBannerText: {
+    fontSize: 16,
+    color: '#1D4ED8',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   voiceInstruction: {
     fontSize: 18,
     color: '#6B7280',
     textAlign: 'center',
     fontWeight: '500',
+  },
+  voiceInstructionReady: {
+    color: '#0E9F6E',
+    fontWeight: '700',
+  },
+  voiceInstructionSpeaking: {
+    color: '#1D4ED8',
+    fontWeight: '600',
   },
   fallbackBtn: {
     marginTop: 8,

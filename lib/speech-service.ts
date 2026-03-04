@@ -3,13 +3,16 @@ import { Platform } from 'react-native';
 
 /**
  * Habla el texto en voz alta sin bloquear el hilo principal.
+ * - Soporta callback `onDone` que se llama cuando el speech termina.
  * - Usa useApplicationAudioSession: false para que funcione aunque el dispositivo
  *   esté en modo silencio (crea su propia sesión de audio).
- * - No hace await de isSpeakingAsync para evitar bloqueos; simplemente para
- *   el speech anterior y lanza el nuevo.
+ * - No hace await de isSpeakingAsync para evitar bloqueos.
  */
-export function speak(text: string, rate: number = 1.0): void {
-  if (!text || !text.trim()) return;
+export function speak(text: string, rate: number = 1.0, onDone?: () => void): void {
+  if (!text || !text.trim()) {
+    onDone?.();
+    return;
+  }
 
   // En web, usar la API nativa del navegador si está disponible
   if (Platform.OS === 'web') {
@@ -19,10 +22,14 @@ export function speak(text: string, rate: number = 1.0): void {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'es-ES';
         utterance.rate = rate;
+        utterance.onend = () => onDone?.();
+        utterance.onerror = () => onDone?.();
         window.speechSynthesis.speak(utterance);
+      } else {
+        onDone?.();
       }
     } catch {
-      // ignorar errores en web
+      onDone?.();
     }
     return;
   }
@@ -37,8 +44,17 @@ export function speak(text: string, rate: number = 1.0): void {
       // useApplicationAudioSession: false → crea sesión propia, funciona aunque
       // el dispositivo esté en modo silencio y no interfiere con otros audios
       useApplicationAudioSession: false,
+      onDone: () => {
+        // Pequeño delay de seguridad para que el audio se limpie antes de grabar
+        setTimeout(() => onDone?.(), 150);
+      },
+      onStopped: () => {
+        onDone?.();
+      },
       onError: (error) => {
         console.warn('[SpeechService] TTS error:', error?.message ?? error);
+        // Si hay error, llamar onDone de todas formas para no bloquear el flujo
+        onDone?.();
       },
     });
   });
@@ -69,6 +85,6 @@ export const VOICE_MESSAGES = {
   step5: 'Paso cinco. ¿A qué hora quieres que te recuerde?',
   success: 'Perfecto. Tu recordatorio ha sido guardado.',
   taskCompleted: 'Tarea completada. ¡Excelente trabajo!',
-  recording: 'Grabando. Habla ahora.',
+  recording: 'Grabando.',
   recordingStop: 'Grabación terminada. Procesando.',
 };

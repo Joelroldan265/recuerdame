@@ -78,3 +78,5 @@
 - [x] Tipos: agregar snoozeInterval a Task
 - [x] Notificaciones: programar snooze automático tras el primer aviso (3 repeticiones)
 - [x] TTS al abrir app desde notificación: leer el recordatorio en voz alta (foreground + tap)
+
+- [x] Step 1: activar micrófono solo después de que la voz de la app termine de hablar (evitar grabar la voz de la app)
