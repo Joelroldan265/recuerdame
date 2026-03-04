@@ -115,7 +115,9 @@ async function registerNotificationCategories(): Promise<void> {
  * @param alarmSound - Sonido de alarma seleccionado por el usuario (para el canal ALARM)
  */
 export async function initNotificationsLazy(alarmSound?: string): Promise<boolean> {
-  if (permissionGranted !== null) return permissionGranted;
+  // Only skip re-init if we already have a confirmed grant.
+  // If permissionGranted === false (previous failure), allow retry.
+  if (permissionGranted === true) return true;
 
   try {
     if (Platform.OS === 'android') {
@@ -205,7 +207,8 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
     return permissionGranted;
   } catch (err) {
     console.error('[NotifService] Error en initNotificationsLazy:', err);
-    permissionGranted = false;
+    // Do NOT cache false — allow retry on next call
+    permissionGranted = null;
     return false;
   }
 }

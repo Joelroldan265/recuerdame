@@ -154,3 +154,10 @@
 - [x] DrumPicker con ScrollView anidado: el scroll mueve la pantalla en lugar del picker
 - [x] Reescribir picker sin ScrollView anidado (PanResponder + flechas ▲▼)
 - [x] Auditoría completa de la app antes del checkpoint
+
+## Bugs críticos (reporte usuario)
+
+- [x] Crash al eliminar recordatorio: corregido (router.back() antes de deleteTask con delay 100ms)
+- [x] Frase de voz no suena: corregido (leer getPresentedNotificationsAsync al desbloquear)
+- [x] Notificaciones no se envían: corregido (no cachear permissionGranted=false, reintentar)
+- [x] Picker de hora: reemplazado por @react-native-picker/picker (rueda nativa iOS/Android)

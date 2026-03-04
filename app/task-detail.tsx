@@ -98,8 +98,12 @@ export default function TaskDetailScreen() {
           text: 'Eliminar',
           style: 'destructive',
           onPress: () => {
-            deleteTask(task.id);
+            // IMPORTANT: navigate back FIRST before deleting.
+            // If we delete first, React re-renders with task=undefined before
+            // router.back() runs, causing a crash on the null task reference.
             router.back();
+            // Small delay so the screen has unmounted before state update
+            setTimeout(() => deleteTask(task.id), 100);
           },
         },
       ]

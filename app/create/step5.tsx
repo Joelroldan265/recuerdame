@@ -1,3 +1,4 @@
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -5,12 +6,10 @@ import {
   Pressable,
   ScrollView,
   Platform,
-  PanResponder,
-  Animated,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { ScreenContainer } from '@/components/screen-container';
 import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
@@ -26,148 +25,6 @@ import {
 } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
-
-// ── Drum Picker (PanResponder — no nested ScrollView) ─────────────────────────
-// Shows 3 items at a time. Drag up/down to change value.
-// Uses PanResponder so it captures gestures independently of the outer ScrollView.
-
-const ITEM_H = 52;
-const VISIBLE = 3;
-const DRUM_H = ITEM_H * VISIBLE;
-
-interface DrumPickerProps {
-  items: string[];
-  selectedIndex: number;
-  onSelect: (index: number) => void;
-  width?: number;
-  label?: string;
-}
-
-function DrumPicker({ items, selectedIndex, onSelect, width = 80, label }: DrumPickerProps) {
-  // translateY represents the drag offset (0 = resting)
-  const translateY = useRef(new Animated.Value(0)).current;
-  const dragStart = useRef(0);
-  const lastIndex = useRef(selectedIndex);
-
-  // Keep lastIndex in sync when parent changes it (e.g. quick-time tap)
-  useEffect(() => {
-    lastIndex.current = selectedIndex;
-    translateY.setValue(0);
-  }, [selectedIndex, translateY]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        // Always capture the gesture — prevents outer ScrollView from stealing it
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponderCapture: () => true,
-        onMoveShouldSetPanResponderCapture: () => true,
-
-        onPanResponderGrant: () => {
-          dragStart.current = lastIndex.current;
-          translateY.setValue(0);
-        },
-
-        onPanResponderMove: (_, gs) => {
-          translateY.setValue(gs.dy);
-        },
-
-        onPanResponderRelease: (_, gs) => {
-          // How many items did we drag past?
-          const steps = -Math.round(gs.dy / ITEM_H);
-          const next = Math.max(0, Math.min(dragStart.current + steps, items.length - 1));
-
-          // Snap back to 0 with animation
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 200,
-            friction: 20,
-          }).start();
-
-          if (next !== lastIndex.current) {
-            lastIndex.current = next;
-            onSelect(next);
-            if (Platform.OS !== 'web') Haptics.selectionAsync();
-          }
-        },
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items.length, onSelect],
-  );
-
-  // Indices of the three visible items
-  const prevIdx = selectedIndex - 1;
-  const nextIdx = selectedIndex + 1;
-
-  const getLabel = (i: number) => {
-    if (i < 0 || i >= items.length) return '';
-    return items[i];
-  };
-
-  return (
-    <View style={{ alignItems: 'center', gap: 4 }}>
-      {label ? <Text style={styles.drumLabel}>{label}</Text> : null}
-
-      <View style={[styles.drumOuter, { width }]} {...panResponder.panHandlers}>
-        {/* Selection highlight */}
-        <View style={styles.drumHighlight} pointerEvents="none" />
-
-        <Animated.View style={{ transform: [{ translateY }] }}>
-          {/* Previous item */}
-          <View style={styles.drumItem}>
-            <Text style={styles.drumItemTextFaded}>{getLabel(prevIdx)}</Text>
-          </View>
-
-          {/* Selected item */}
-          <Pressable
-            style={styles.drumItem}
-            onPress={() => {/* already selected */}}
-          >
-            <Text style={styles.drumItemTextSelected}>{getLabel(selectedIndex)}</Text>
-          </Pressable>
-
-          {/* Next item */}
-          <View style={styles.drumItem}>
-            <Text style={styles.drumItemTextFaded}>{getLabel(nextIdx)}</Text>
-          </View>
-        </Animated.View>
-
-        {/* Tap arrows for +1 / -1 */}
-        <Pressable
-          style={styles.drumArrowTop}
-          onPress={() => {
-            const next = Math.max(0, selectedIndex - 1);
-            if (next !== selectedIndex) {
-              onSelect(next);
-              if (Platform.OS !== 'web') Haptics.selectionAsync();
-            }
-          }}
-          accessibilityLabel={`${label} anterior`}
-          accessibilityRole="button"
-        >
-          <Text style={styles.drumArrowText}>▲</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.drumArrowBottom}
-          onPress={() => {
-            const next = Math.min(items.length - 1, selectedIndex + 1);
-            if (next !== selectedIndex) {
-              onSelect(next);
-              if (Platform.OS !== 'web') Haptics.selectionAsync();
-            }
-          }}
-          accessibilityLabel={`${label} siguiente`}
-          accessibilityRole="button"
-        >
-          <Text style={styles.drumArrowText}>▼</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
 
 // ── Data ───────────────────────────────────────────────────────────────────────
 const HOURS_12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
@@ -189,9 +46,9 @@ export default function Step5Screen() {
     }>();
 
   // Default 9:00 AM — button always enabled
-  const [hourIndex,   setHourIndex]   = useState(8);  // "09"
-  const [minuteIndex, setMinuteIndex] = useState(0);  // "00"
-  const [ampmIndex,   setAmpmIndex]   = useState(0);  // "AM"
+  const [hourVal,   setHourVal]   = useState('09');
+  const [minuteVal, setMinuteVal] = useState('00');
+  const [ampmVal,   setAmpmVal]   = useState('AM');
   const [selectedQuick, setSelectedQuick] = useState<number | null>(null);
 
   const [snoozeInterval,  setSnoozeInterval]  = useState<SnoozeInterval>(0);
@@ -201,29 +58,29 @@ export default function Step5Screen() {
     if (settings.soundEnabled) speak(VOICE_MESSAGES.step5, settings.voiceSpeed);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const get24Hour = useCallback((hIdx: number, apIdx: number) => {
-    const h12 = hIdx + 1;
-    if (apIdx === 0) return h12 === 12 ? 0 : h12;
+  const get24Hour = useCallback((hStr: string, ap: string) => {
+    const h12 = parseInt(hStr, 10);
+    if (ap === 'AM') return h12 === 12 ? 0 : h12;
     return h12 === 12 ? 12 : h12 + 12;
   }, []);
 
   const currentTime: ReminderTime = {
-    hour:   get24Hour(hourIndex, ampmIndex),
-    minute: minuteIndex,
+    hour:   get24Hour(hourVal, ampmVal),
+    minute: parseInt(minuteVal, 10),
   };
 
-  const handleHourChange   = useCallback((i: number) => { setHourIndex(i);   setSelectedQuick(null); }, []);
-  const handleMinuteChange = useCallback((i: number) => { setMinuteIndex(i); setSelectedQuick(null); }, []);
-  const handleAmpmChange   = useCallback((i: number) => { setAmpmIndex(i);   setSelectedQuick(null); }, []);
+  const handleHourChange   = useCallback((v: string) => { setHourVal(v);   setSelectedQuick(null); }, []);
+  const handleMinuteChange = useCallback((v: string) => { setMinuteVal(v); setSelectedQuick(null); }, []);
+  const handleAmpmChange   = useCallback((v: string) => { setAmpmVal(v);   setSelectedQuick(null); }, []);
 
   const handleQuickSelect = useCallback((i: number) => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const qt = QUICK_TIMES[i];
     setSelectedQuick(i);
     const h12 = qt.hour % 12 || 12;
-    setHourIndex(h12 - 1);
-    setMinuteIndex(qt.minute);
-    setAmpmIndex(qt.hour < 12 ? 0 : 1);
+    setHourVal(String(h12).padStart(2, '0'));
+    setMinuteVal(String(qt.minute).padStart(2, '0'));
+    setAmpmVal(qt.hour < 12 ? 'AM' : 'PM');
   }, []);
 
   const formatTime = (hour: number, minute: number) => {
@@ -248,13 +105,16 @@ export default function Step5Screen() {
     router.push({ pathname: '/create/step6', params });
   }, [currentTime, snoozeInterval, advanceMinutes, text, priority, repeatType, customDay, customMonth, customYear, router]);
 
+  // Picker style varies by platform
+  const pickerStyle = Platform.OS === 'ios'
+    ? styles.pickerIOS
+    : styles.pickerAndroid;
+
   return (
     <ScreenContainer>
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
-        // Disable outer scroll while user is interacting with pickers
-        // (PanResponder capture handles this automatically)
       >
         <StepIndicator currentStep={5} totalSteps={6} labels={STEP_LABELS} />
 
@@ -288,33 +148,65 @@ export default function Step5Screen() {
           </View>
         </View>
 
-        {/* Drum Picker */}
+        {/* Native Wheel Picker */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Hora personalizada</Text>
-          <Text style={styles.sectionSub}>Arrastra arriba/abajo o usa las flechas ▲▼</Text>
-          <View style={styles.drumRow}>
-            <DrumPicker
-              label="Hora"
-              items={HOURS_12}
-              selectedIndex={hourIndex}
-              onSelect={handleHourChange}
-              width={80}
-            />
+          <View style={styles.pickerRow}>
+            {/* Hours */}
+            <View style={styles.pickerCol}>
+              <Text style={styles.pickerColLabel}>Hora</Text>
+              <View style={styles.pickerWrapper}>
+                <Picker
+                  selectedValue={hourVal}
+                  onValueChange={handleHourChange}
+                  style={pickerStyle}
+                  itemStyle={styles.pickerItem}
+                  accessibilityLabel="Seleccionar hora"
+                >
+                  {HOURS_12.map((h) => (
+                    <Picker.Item key={h} label={h} value={h} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
             <Text style={styles.colon}>:</Text>
-            <DrumPicker
-              label="Min"
-              items={MINUTES}
-              selectedIndex={minuteIndex}
-              onSelect={handleMinuteChange}
-              width={80}
-            />
-            <DrumPicker
-              label="AM/PM"
-              items={AMPM}
-              selectedIndex={ampmIndex}
-              onSelect={handleAmpmChange}
-              width={80}
-            />
+
+            {/* Minutes */}
+            <View style={styles.pickerCol}>
+              <Text style={styles.pickerColLabel}>Min</Text>
+              <View style={styles.pickerWrapper}>
+                <Picker
+                  selectedValue={minuteVal}
+                  onValueChange={handleMinuteChange}
+                  style={pickerStyle}
+                  itemStyle={styles.pickerItem}
+                  accessibilityLabel="Seleccionar minutos"
+                >
+                  {MINUTES.map((m) => (
+                    <Picker.Item key={m} label={m} value={m} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            {/* AM/PM */}
+            <View style={styles.pickerCol}>
+              <Text style={styles.pickerColLabel}>AM/PM</Text>
+              <View style={styles.pickerWrapper}>
+                <Picker
+                  selectedValue={ampmVal}
+                  onValueChange={handleAmpmChange}
+                  style={pickerStyle}
+                  itemStyle={styles.pickerItem}
+                  accessibilityLabel="Seleccionar AM o PM"
+                >
+                  {AMPM.map((ap) => (
+                    <Picker.Item key={ap} label={ap} value={ap} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -348,37 +240,19 @@ export default function Step5Screen() {
                 ]}
               >
                 <View style={[styles.optionDot, advanceMinutes === opt.value && styles.optionDotActive]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.optionLabel, advanceMinutes === opt.value && styles.optionLabelActive]}>
-                    {opt.label}
-                  </Text>
-                  <Text style={[styles.optionDesc, advanceMinutes === opt.value && styles.optionDescActive]}>
-                    {opt.description}
-                  </Text>
-                </View>
-                {advanceMinutes === opt.value && <Text style={styles.checkmark}>✓</Text>}
+                <Text style={[styles.optionText, advanceMinutes === opt.value && styles.optionTextActive]}>
+                  {opt.label}
+                </Text>
               </Pressable>
             ))}
           </View>
-          {advanceMinutes > 0 && (() => {
-            const total = currentTime.hour * 60 + currentTime.minute - advanceMinutes;
-            const ah = ((Math.floor(total / 60)) % 24 + 24) % 24;
-            const am = ((total % 60) + 60) % 60;
-            return (
-              <View style={styles.infoBox}>
-                <Text style={styles.infoText}>
-                  📣 Te avisaré a las {formatTime(ah, am)} ({advanceMinutes} min antes de las {formatTime(currentTime.hour, currentTime.minute)})
-                </Text>
-              </View>
-            );
-          })()}
         </View>
 
-        {/* Snooze */}
+        {/* Repetición de snooze */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>🔁 ¿Cada cuánto te recuerdo?</Text>
-          <Text style={styles.sectionSub}>Después del primer aviso, ¿quieres que te repita el recordatorio?</Text>
-          <View style={styles.snoozeGrid}>
+          <Text style={styles.sectionLabel}>🔁 Repetir recordatorio</Text>
+          <Text style={styles.sectionSub}>¿Quieres que se repita si no lo atiendes?</Text>
+          <View style={styles.snoozeList}>
             {SNOOZE_OPTIONS.map((opt) => (
               <Pressable
                 key={opt.value}
@@ -390,231 +264,134 @@ export default function Step5Screen() {
                 accessibilityLabel={opt.label}
                 accessibilityState={{ checked: snoozeInterval === opt.value }}
                 style={({ pressed }) => [
-                  styles.snoozeBtn,
-                  snoozeInterval === opt.value && styles.snoozeBtnActive,
-                  { transform: [{ scale: pressed ? 0.95 : 1 }] },
+                  styles.optionRow,
+                  snoozeInterval === opt.value && styles.optionRowActive,
+                  { transform: [{ scale: pressed ? 0.97 : 1 }] },
                 ]}
               >
-                <Text style={[styles.snoozeBtnLabel, snoozeInterval === opt.value && styles.snoozeBtnLabelActive]}>
+                <View style={[styles.optionDot, snoozeInterval === opt.value && styles.optionDotActive]} />
+                <Text style={[styles.optionText, snoozeInterval === opt.value && styles.optionTextActive]}>
                   {opt.label}
-                </Text>
-                <Text style={[styles.snoozeBtnDesc, snoozeInterval === opt.value && styles.snoozeBtnDescActive]}>
-                  {opt.description}
                 </Text>
               </Pressable>
             ))}
           </View>
-          {snoozeInterval > 0 && (
-            <View style={styles.infoBox}>
-              <Text style={styles.infoText}>
-                ⏱️ Te recordaré a las {formatTime(currentTime.hour, currentTime.minute)} y luego cada {snoozeInterval} minutos (3 veces más).
-              </Text>
-            </View>
-          )}
         </View>
 
+        {/* Botón continuar */}
         <BigButton
           label="Siguiente →"
           onPress={handleContinue}
           variant="primary"
           fullWidth
+          style={styles.continueBtn}
         />
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </ScreenContainer>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  scroll: {
-    flexGrow: 1,
-    padding: 20,
-    gap: 20,
-    paddingBottom: 40,
-  },
+  scroll: { flexGrow: 1, padding: 16, gap: 16 },
   titleContainer: { gap: 4 },
-  title: { fontSize: 22, fontWeight: '700', color: '#11181C' },
-  subtitle: { fontSize: 15, color: '#687076' },
-  section: { gap: 10 },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  sectionSub: { fontSize: 13, color: '#687076', marginTop: -4 },
+  title:    { fontSize: 26, fontWeight: '800', color: '#111827' },
+  subtitle: { fontSize: 16, color: '#6B7280' },
 
-  // Quick times
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  section:      { gap: 10 },
+  sectionLabel: { fontSize: 17, fontWeight: '700', color: '#374151' },
+  sectionSub:   { fontSize: 14, color: '#9CA3AF' },
+
+  // Quick time buttons
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   quickBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20,
+    backgroundColor: '#F3F4F6', borderWidth: 2, borderColor: '#E5E7EB',
   },
-  quickBtnActive: { backgroundColor: '#EBF5FF', borderColor: '#1A56DB' },
-  quickBtnText: { fontSize: 15, fontWeight: '600', color: '#374151' },
+  quickBtnActive: { backgroundColor: '#EFF6FF', borderColor: '#1A56DB' },
+  quickBtnText:       { fontSize: 15, fontWeight: '600', color: '#374151' },
   quickBtnTextActive: { color: '#1A56DB' },
 
-  // Drum picker
-  drumRow: {
+  // Native Picker row
+  pickerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
     backgroundColor: '#F9FAFB',
     borderRadius: 16,
-    padding: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    paddingVertical: 4,
+    gap: 0,
+  },
+  pickerCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  pickerColLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  pickerWrapper: {
+    width: '100%',
+    overflow: 'hidden',
+  },
+  pickerIOS: {
+    width: '100%',
+    height: 150,
+  },
+  pickerAndroid: {
+    width: '100%',
+    height: 56,
+    color: '#111827',
+  },
+  pickerItem: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
   },
   colon: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#374151',
-    marginBottom: ITEM_H / 2 + 8,
-    paddingHorizontal: 2,
-  },
-  drumLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  drumOuter: {
-    height: DRUM_H,
-    overflow: 'hidden',
-    borderRadius: 12,
-    position: 'relative',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  drumHighlight: {
-    position: 'absolute',
-    top: ITEM_H,
-    left: 0,
-    right: 0,
-    height: ITEM_H,
-    backgroundColor: 'rgba(26, 86, 219, 0.07)',
-    borderTopWidth: 1.5,
-    borderBottomWidth: 1.5,
-    borderColor: '#1A56DB',
-    zIndex: 1,
-  },
-  drumItem: {
-    height: ITEM_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drumItemTextFaded: {
-    fontSize: 18,
-    fontWeight: '400',
-    color: '#D1D5DB',
-  },
-  drumItemTextSelected: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#1A56DB',
-  },
-  drumArrowTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: ITEM_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  drumArrowBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: ITEM_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  drumArrowText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '600',
+    marginBottom: Platform.OS === 'ios' ? 0 : 4,
+    paddingHorizontal: 4,
   },
 
-  // Selected display
+  // Selected time display
   selectedDisplay: {
-    backgroundColor: '#EBF5FF',
-    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 16,
     padding: 16,
     alignItems: 'center',
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  selectedLabel: { fontSize: 13, color: '#1A56DB', fontWeight: '500' },
-  selectedTime: { fontSize: 28, fontWeight: '700', color: '#1A56DB' },
-
-  // Option rows (advance)
-  advanceList: { gap: 8 },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-  },
-  optionRowActive: { backgroundColor: '#EBF5FF', borderColor: '#1A56DB' },
-  optionDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
+    borderColor: '#BFDBFE',
+    gap: 4,
+  },
+  selectedLabel: { fontSize: 15, color: '#3B82F6', fontWeight: '600' },
+  selectedTime:  { fontSize: 32, fontWeight: '800', color: '#1A56DB' },
+
+  // Option rows (advance / snooze)
+  advanceList: { gap: 8 },
+  snoozeList:  { gap: 8 },
+  optionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#F9FAFB', borderRadius: 14, padding: 14,
+    borderWidth: 2, borderColor: '#E5E7EB',
+  },
+  optionRowActive: { backgroundColor: '#EFF6FF', borderColor: '#1A56DB' },
+  optionDot: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 2, borderColor: '#D1D5DB', backgroundColor: '#FFFFFF',
   },
   optionDotActive: { borderColor: '#1A56DB', backgroundColor: '#1A56DB' },
-  optionLabel: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  optionLabelActive: { color: '#1A56DB' },
-  optionDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
-  optionDescActive: { color: '#60A5FA' },
-  checkmark: { fontSize: 16, fontWeight: '700', color: '#1A56DB' },
+  optionText:       { fontSize: 16, color: '#374151', fontWeight: '600', flex: 1 },
+  optionTextActive: { color: '#1A56DB' },
 
-  // Snooze
-  snoozeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  snoozeBtn: {
-    flex: 1,
-    minWidth: '44%',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    alignItems: 'center',
-    gap: 4,
-  },
-  snoozeBtnActive: { backgroundColor: '#EBF5FF', borderColor: '#1A56DB' },
-  snoozeBtnLabel: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  snoozeBtnLabelActive: { color: '#1A56DB' },
-  snoozeBtnDesc: { fontSize: 11, color: '#9CA3AF', textAlign: 'center' },
-  snoozeBtnDescActive: { color: '#60A5FA' },
-
-  // Info box
-  infoBox: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    marginTop: 4,
-  },
-  infoText: { fontSize: 13, color: '#065F46', lineHeight: 18 },
+  // Continue button
+  continueBtn: { marginTop: 8 },
 });

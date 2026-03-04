@@ -114,10 +114,44 @@ export default function RootLayout() {
         nextState === 'active'
       ) {
         // 1. Leer el recordatorio pendiente en voz alta
+        // Strategy A: check explicitly saved pending text (set when user taps notification)
+        // Strategy B: check recently presented notifications (covers locked-screen case where
+        //             the user didn't tap but the alarm fired while screen was locked)
         try {
+          let textToSpeak: string | null = null;
+
+          // Strategy A: explicitly saved pending text
           const pendingText = await AsyncStorage.getItem(PENDING_SPEAK_KEY);
           if (pendingText) {
             await AsyncStorage.removeItem(PENDING_SPEAK_KEY);
+            textToSpeak = pendingText;
+          }
+
+          // Strategy B: check presented notifications for recent reminder
+          if (!textToSpeak) {
+            try {
+              const N = await import('expo-notifications');
+              const presented = await N.getPresentedNotificationsAsync();
+              // Find the most recent reminder notification (not persistent)
+              type PresentedNotif = (typeof presented)[number];
+              const recent = presented
+                .filter((n: PresentedNotif) => {
+                  const d = n.request.content.data as Record<string, unknown>;
+                  return d?.action === 'reminder' && d?.taskText;
+                })
+                .sort((a: PresentedNotif, b: PresentedNotif) => {
+                  const ta = (a.date ?? 0) as number;
+                  const tb = (b.date ?? 0) as number;
+                  return tb - ta;
+                })[0];
+              if (recent) {
+                const d = recent.request.content.data as Record<string, unknown>;
+                textToSpeak = (d?.taskText ?? recent.request.content.body ?? '') as string;
+              }
+            } catch { /* ignore — getPresentedNotificationsAsync may not be available */ }
+          }
+
+          if (textToSpeak) {
             // Leer el delay configurado por el usuario (por defecto 1000ms)
             let readDelay = 1000;
             try {
@@ -129,7 +163,7 @@ export default function RootLayout() {
                 }
               }
             } catch { /* usar valor por defecto */ }
-            setTimeout(() => speakText(pendingText), readDelay);
+            setTimeout(() => speakText(textToSpeak!), readDelay);
           }
         } catch { /* ignorar */ }
 
