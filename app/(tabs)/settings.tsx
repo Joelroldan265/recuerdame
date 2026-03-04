@@ -16,8 +16,10 @@ import {
   resetNotificationPermissionCache,
   showPersistentNotification,
   hidePersistentNotification,
+  scheduleDailyReadingNotifications,
+  cancelDailyReadingNotifications,
 } from '@/lib/notification-service';
-import { UNLOCK_DELAY_OPTIONS, UnlockReadDelay, ALARM_SOUND_OPTIONS, AlarmSound } from '@/lib/task-types';
+import { UNLOCK_DELAY_OPTIONS, UnlockReadDelay, ALARM_SOUND_OPTIONS, AlarmSound, NotificationStyle, DailyReadingSlot } from '@/lib/task-types';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -162,6 +164,47 @@ export default function SettingsScreen() {
     // Reiniciar caché para que el canal Android se recree con el nuevo sonido
     resetNotificationPermissionCache();
   }, [updateSettings]);
+
+  const handleNotificationStyleChange = useCallback((style: NotificationStyle) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    updateSettings({ notificationStyle: style });
+  }, [updateSettings]);
+
+  const handleDailyReadingToggle = useCallback(async (value: boolean) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    updateSettings({ dailyReadingEnabled: value });
+    if (value) {
+      await scheduleDailyReadingNotifications(settings.dailyReadingSlots ?? []);
+    } else {
+      await cancelDailyReadingNotifications();
+    }
+  }, [updateSettings, settings.dailyReadingSlots]);
+
+  const handleSlotToggle = useCallback(async (index: number, enabled: boolean) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    const slots = [...(settings.dailyReadingSlots ?? [])];
+    slots[index] = { ...slots[index], enabled };
+    updateSettings({ dailyReadingSlots: slots });
+    if (settings.dailyReadingEnabled) {
+      await scheduleDailyReadingNotifications(slots);
+    }
+  }, [settings.dailyReadingSlots, settings.dailyReadingEnabled, updateSettings]);
+
+  const handleSlotHourChange = useCallback(async (index: number, delta: number) => {
+    const slots = [...(settings.dailyReadingSlots ?? [])];
+    const h = ((slots[index].hour + delta) + 24) % 24;
+    slots[index] = { ...slots[index], hour: h };
+    updateSettings({ dailyReadingSlots: slots });
+    if (settings.dailyReadingEnabled) {
+      await scheduleDailyReadingNotifications(slots);
+    }
+  }, [settings.dailyReadingSlots, settings.dailyReadingEnabled, updateSettings]);
 
   const handlePersistentNotifToggle = useCallback(async (value: boolean) => {
     if (Platform.OS !== 'web') {
@@ -419,6 +462,102 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Tipo de notificación */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔔 Tipo de notificación</Text>
+          <Text style={[styles.rowDescription, { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }]}>
+            Elige si las notificaciones suenan con alarma o llegan como mensaje silencioso.
+          </Text>
+          <View style={styles.notifStyleGrid}>
+            {(['alarm', 'message'] as NotificationStyle[]).map((style) => {
+              const isActive = (settings.notificationStyle ?? 'alarm') === style;
+              return (
+                <Pressable
+                  key={style}
+                  onPress={() => handleNotificationStyleChange(style)}
+                  style={[styles.notifStyleBtn, isActive && styles.notifStyleBtnActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isActive }}
+                >
+                  <Text style={[styles.notifStyleLabel, isActive && styles.notifStyleLabelActive]}>
+                    {style === 'alarm' ? '🔊 Alarma' : '💬 Mensaje'}
+                  </Text>
+                  <Text style={[styles.notifStyleDesc, isActive && styles.notifStyleDescActive]}>
+                    {style === 'alarm'
+                      ? 'Suena aunque el teléfono esté en silencio'
+                      : 'Notificación silenciosa, sin sonido de alarma'}
+                  </Text>
+                  {isActive && <Text style={styles.notifStyleCheck}>✓ Seleccionado</Text>}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Lectura programada de tareas */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📖 Lectura programada</Text>
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Leer tareas pendientes</Text>
+              <Text style={styles.rowDescription}>Te leo en voz alta tus tareas pendientes a las horas que elijas</Text>
+            </View>
+            <Switch
+              value={settings.dailyReadingEnabled ?? false}
+              onValueChange={handleDailyReadingToggle}
+              trackColor={{ false: '#D1D5DB', true: '#1A56DB' }}
+              thumbColor="#FFFFFF"
+              accessibilityLabel="Activar lectura programada"
+            />
+          </View>
+          {(settings.dailyReadingEnabled ?? false) && (
+            <View style={styles.slotsContainer}>
+              {(settings.dailyReadingSlots ?? []).map((slot: DailyReadingSlot, idx: number) => {
+                const h = slot.hour % 12 || 12;
+                const m = slot.minute.toString().padStart(2, '0');
+                const ampm = slot.hour < 12 ? 'AM' : 'PM';
+                const slotNames = ['☀️ Mañana', '🌤️ Tarde', '🌙 Noche'];
+                return (
+                  <View key={idx} style={[styles.slotRow, !slot.enabled && styles.slotRowDisabled]}>
+                    <Switch
+                      value={slot.enabled}
+                      onValueChange={(v) => handleSlotToggle(idx, v)}
+                      trackColor={{ false: '#D1D5DB', true: '#1A56DB' }}
+                      thumbColor="#FFFFFF"
+                      accessibilityLabel={`Activar franja ${slotNames[idx]}`}
+                    />
+                    <Text style={[styles.slotName, !slot.enabled && styles.slotNameDisabled]}>
+                      {slotNames[idx]}
+                    </Text>
+                    <View style={styles.slotTimeControls}>
+                      <Pressable
+                        onPress={() => handleSlotHourChange(idx, 1)}
+                        style={[styles.timeArrow, !slot.enabled && styles.timeArrowDisabled]}
+                        disabled={!slot.enabled}
+                      >
+                        <Text style={styles.timeArrowText}>▲</Text>
+                      </Pressable>
+                      <Text style={[styles.slotTimeValue, !slot.enabled && styles.slotTimeValueDisabled]}>
+                        {h.toString().padStart(2, '0')}:{m} {ampm}
+                      </Text>
+                      <Pressable
+                        onPress={() => handleSlotHourChange(idx, -1)}
+                        style={[styles.timeArrow, !slot.enabled && styles.timeArrowDisabled]}
+                        disabled={!slot.enabled}
+                      >
+                        <Text style={styles.timeArrowText}>▼</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+              <Text style={styles.slotsNote}>
+                💡 Solo se leen las tareas pendientes para hoy. Si no hay tareas, no se leerá nada.
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Acerca de */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ℹ️ Acerca de</Text>
@@ -428,6 +567,9 @@ export default function SettingsScreen() {
             <Text style={styles.aboutDescription}>
               App de recordatorios por voz diseñada para personas con TDAH, adultos mayores y personas ansiosas.
             </Text>
+            <View style={styles.aboutDivider} />
+            <Text style={styles.aboutCreatorLabel}>Creado por</Text>
+            <Text style={styles.aboutCreatorName}>Joel Roldan Gomez</Text>
           </View>
         </View>
 
@@ -710,6 +852,115 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  // ── Tipo de notificación ────────────────────────────────────────────────────
+  notifStyleGrid: {
+    padding: 16,
+    gap: 10,
+  },
+  notifStyleBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 2,
+  },
+  notifStyleBtnActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#1A56DB',
+  },
+  notifStyleLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  notifStyleLabelActive: {
+    color: '#1A56DB',
+  },
+  notifStyleDesc: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  notifStyleDescActive: {
+    color: '#3B82F6',
+  },
+  notifStyleCheck: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1A56DB',
+    marginTop: 4,
+  },
+  // ── Lectura programada ──────────────────────────────────────────────────────
+  slotsContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  slotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  slotRowDisabled: {
+    opacity: 0.5,
+  },
+  slotName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  slotNameDisabled: {
+    color: '#9CA3AF',
+  },
+  slotTimeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  slotTimeValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A56DB',
+    minWidth: 72,
+    textAlign: 'center',
+  },
+  slotTimeValueDisabled: {
+    color: '#9CA3AF',
+  },
+  timeArrowDisabled: {
+    opacity: 0.4,
+  },
+  slotsNote: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  // ── Acerca de (creator) ─────────────────────────────────────────────────────
+  aboutDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 12,
+  },
+  aboutCreatorLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  aboutCreatorName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    marginTop: 2,
   },
   customVoiceBtn: {
     marginHorizontal: 16,

@@ -161,3 +161,10 @@
 - [x] Frase de voz no suena: corregido (leer getPresentedNotificationsAsync al desbloquear)
 - [x] Notificaciones no se envían: corregido (no cachear permissionGranted=false, reintentar)
 - [x] Picker de hora: reemplazado por @react-native-picker/picker (rueda nativa iOS/Android)
+
+## Nuevas funciones (solicitud usuario)
+
+- [x] Acerca de: añadido nombre del creador "Joel Roldan Gomez"
+- [x] Ajustes: configuración de lectura programada (3 franjas horarias, toggle por franja, ajuste de hora)
+- [x] Ajustes: opción para elegir entre Alarma o Mensaje silencioso en notificaciones
+- [x] Step6 (resumen): edición inline completa sin regresar (texto, prioridad, hora nativa, repetición, anticipación, snooze)

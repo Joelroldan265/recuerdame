@@ -39,8 +39,13 @@ const ANDROID_CHANNEL_QUICK    = 'recuerdame-quick';
 /** ID fijo de la notificación persistente (para poder cancelarla por ID) */
 const PERSISTENT_NOTIFICATION_ID = 'recuerdame-persistent-record';
 
-/** Devuelve el channelId correcto según la prioridad de la tarea */
-function channelForPriority(priority: string): string {
+/** Canal LECTURA DIARIA — para el resumen programado de tareas pendientes */
+const ANDROID_CHANNEL_DAILY = 'recuerdame-daily';
+
+/** Devuelve el channelId correcto según la prioridad y el estilo de notificación */
+function channelForPriority(priority: string, notifStyle?: string): string {
+  // Si el usuario elige 'message' (silencioso), usar canal SILENT para todas las prioridades
+  if (notifStyle === 'message') return ANDROID_CHANNEL_SILENT;
   if (priority === 'high')   return ANDROID_CHANNEL_ALARM;
   if (priority === 'medium') return ANDROID_CHANNEL_REMINDER;
   return ANDROID_CHANNEL_SILENT;
@@ -168,10 +173,22 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         bypassDnd: false,
       });
+      // Canal LECTURA DIARIA — resumen de tareas pendientes, importancia DEFAULT
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_DAILY, {
+        name: '📖 Lectura diaria de tareas',
+        description: 'Resumen de tareas pendientes a horas programadas.',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 200, 100, 200],
+        lightColor: '#1A56DB',
+        sound: 'media',
+        enableVibrate: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+      });
 
-      // Canal PERSISTENTE — acceso rápido fijo, sin sonido, importancia mínima
-      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_QUICK, {
-        name: '🎤 Grabación rápida',
+      // Canal PERSISTENTE — acceso rápido fijo en el panel de notificaciones, sin sonido
+      await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_QUICK, {name: '🎤 Grabación rápida',
         description: 'Acceso rápido para grabar un nuevo recordatorio desde el panel de notificaciones.',
         importance: Notifications.AndroidImportance.MIN,
         enableVibrate: false,
@@ -302,7 +319,7 @@ export async function scheduleTaskNotification(
     }
 
     const { hour, minute } = task.reminderTime;
-    const channelId = channelForPriority(task.priority);
+    const channelId = channelForPriority(task.priority, settings.notificationStyle);
 
     let trigger: Notifications.NotificationTriggerInput;
 
@@ -518,14 +535,68 @@ export async function showPersistentNotification(): Promise<void> {
  */
 export async function hidePersistentNotification(): Promise<void> {
   try {
-    // Intentar cancelar como notificación programada
     await Notifications.cancelScheduledNotificationAsync(PERSISTENT_NOTIFICATION_ID);
-  } catch { /* ignore — puede que no exista */ }
-
+  } catch { /* ignore */ }
   try {
-    // También cancelar como notificación presentada (por si ya fue mostrada)
     await Notifications.dismissNotificationAsync(PERSISTENT_NOTIFICATION_ID);
   } catch { /* ignore */ }
-
   console.log('[NotifService] Notificación persistente desactivada');
+}
+
+// ── Lectura programada diaria ──────────────────────────────────────────────────────────────────
+
+const DAILY_READING_ID_PREFIX = 'recuerdame-daily-';
+
+/**
+ * Programa notificaciones diarias para leer las tareas pendientes.
+ * Cancela las anteriores antes de programar las nuevas.
+ * @param slots - Franjas horarias habilitadas
+ */
+export async function scheduleDailyReadingNotifications(
+  slots: Array<{ hour: number; minute: number; enabled: boolean }>,
+): Promise<void> {
+  // Cancelar todas las anteriores
+  await cancelDailyReadingNotifications();
+
+  const hasPermission = await initNotificationsLazy();
+  if (!hasPermission) return;
+
+  const enabledSlots = slots.filter((s) => s.enabled);
+  for (let i = 0; i < enabledSlots.length; i++) {
+    const slot = enabledSlots[i];
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: `${DAILY_READING_ID_PREFIX}${i}`,
+        content: {
+          title: '📖 Tareas pendientes',
+          body: 'Toca para escuchar tus recordatorios pendientes de hoy',
+          data: { action: 'daily_reading', screen: '/(tabs)/tasks' },
+          sound: true,
+          categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
+          ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_DAILY }),
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: slot.hour,
+          minute: slot.minute,
+          channelId: ANDROID_CHANNEL_DAILY,
+        },
+      });
+      console.log(`[NotifService] Lectura diaria programada: ${slot.hour}:${slot.minute.toString().padStart(2,'0')}`);
+    } catch (err) {
+      console.warn('[NotifService] Error al programar lectura diaria:', err);
+    }
+  }
+}
+
+/**
+ * Cancela todas las notificaciones de lectura diaria programadas.
+ */
+export async function cancelDailyReadingNotifications(): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(`${DAILY_READING_ID_PREFIX}${i}`);
+    } catch { /* ignore */ }
+  }
+  console.log('[NotifService] Lecturas diarias canceladas');
 }

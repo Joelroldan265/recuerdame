@@ -42,6 +42,15 @@ export type UnlockReadDelay = 0 | 1000 | 3000 | 5000 | 10000;
 /** Nombre del archivo de sonido de alarma (sin extensión). */
 export type AlarmSound = 'alarm_classic' | 'alarm_urgent' | 'alarm_gentle' | 'alarm_bell' | 'alarm_digital';
 
+/** Tipo de notificación: 'alarm' = sonido de alarma, 'message' = solo mensaje silencioso. */
+export type NotificationStyle = 'alarm' | 'message';
+
+export interface DailyReadingSlot {
+  hour: number;
+  minute: number;
+  enabled: boolean;
+}
+
 export interface Settings {
   voiceSpeed: number; // 0.5 – 2.0
   soundEnabled: boolean;
@@ -52,6 +61,9 @@ export interface Settings {
   unlockReadDelay: UnlockReadDelay; // ms antes de leer al desbloquear
   alarmSound: AlarmSound; // sonido de alarma para prioridad alta
   persistentNotification: boolean; // notificación fija de grabación rápida en Android
+  notificationStyle: NotificationStyle; // 'alarm' = con sonido, 'message' = silencioso
+  dailyReadingEnabled: boolean; // leer tareas pendientes a horas programadas
+  dailyReadingSlots: DailyReadingSlot[]; // hasta 3 franjas horarias
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -61,9 +73,16 @@ export const DEFAULT_SETTINGS: Settings = {
   doNotDisturbEnabled: false,
   doNotDisturbStart: { hour: 22, minute: 0 },
   doNotDisturbEnd: { hour: 8, minute: 0 },
-  unlockReadDelay: 1000, // 1 segundo por defecto
-  alarmSound: 'alarm_classic', // sonido de alarma por defecto
-  persistentNotification: false, // desactivado por defecto
+  unlockReadDelay: 1000,
+  alarmSound: 'alarm_classic',
+  persistentNotification: false,
+  notificationStyle: 'alarm', // por defecto con sonido de alarma
+  dailyReadingEnabled: false,
+  dailyReadingSlots: [
+    { hour: 8, minute: 0, enabled: true },   // mañana
+    { hour: 14, minute: 0, enabled: false },  // tarde
+    { hour: 21, minute: 0, enabled: false },  // noche
+  ],
 };
 
 export const UNLOCK_DELAY_OPTIONS: Array<{ label: string; description: string; value: UnlockReadDelay }> = [
