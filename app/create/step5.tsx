@@ -14,7 +14,7 @@ import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
-import { QUICK_TIMES, SNOOZE_OPTIONS, ReminderTime, SnoozeInterval } from '@/lib/task-types';
+import { QUICK_TIMES, SNOOZE_OPTIONS, ADVANCE_OPTIONS, ReminderTime, SnoozeInterval, AdvanceMinutes } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
 
@@ -36,6 +36,7 @@ export default function Step5Screen() {
   const [customMinute, setCustomMinute] = useState(0);
   const [useCustom, setUseCustom] = useState(false);
   const [snoozeInterval, setSnoozeInterval] = useState<SnoozeInterval>(0);
+  const [advanceMinutes, setAdvanceMinutes] = useState<AdvanceMinutes>(0);
 
   useEffect(() => {
     if (settings.soundEnabled) {
@@ -80,6 +81,13 @@ export default function Step5Screen() {
     setSnoozeInterval(value);
   }, []);
 
+  const handleAdvanceSelect = useCallback((value: AdvanceMinutes) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setAdvanceMinutes(value);
+  }, []);
+
   const formatTimeDisplay = (hour: number, minute: number) => {
     const h = hour % 12 || 12;
     const m = minute.toString().padStart(2, '0');
@@ -96,13 +104,14 @@ export default function Step5Screen() {
       hour: selectedTime.hour.toString(),
       minute: selectedTime.minute.toString(),
       snoozeInterval: snoozeInterval.toString(),
+      advanceMinutes: advanceMinutes.toString(),
     };
     if (customDay) params.customDay = customDay;
     if (customMonth) params.customMonth = customMonth;
     if (customYear) params.customYear = customYear;
 
     router.push({ pathname: '/create/step6', params });
-  }, [selectedTime, snoozeInterval, text, priority, repeatType, router, customDay, customMonth, customYear]);
+  }, [selectedTime, snoozeInterval, advanceMinutes, text, priority, repeatType, router, customDay, customMonth, customYear]);
 
   return (
     <ScreenContainer>
@@ -211,6 +220,60 @@ export default function Step5Screen() {
             </Text>
           </View>
         )}
+
+        {/* ── NUEVA SECCIÓN: ¿Con cuánta anticipación te aviso? ── */}
+        <View style={styles.advanceSection}>
+          <Text style={styles.sectionLabel}>🔔 ¿Con cuánta anticipación te aviso?</Text>
+          <Text style={styles.snoozeSubtitle}>
+            ¿Quieres que te avise antes de la hora exacta?
+          </Text>
+          {/* Rollbar / picker visual */}
+          <View style={styles.advanceRoller}>
+            {ADVANCE_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.value}
+                onPress={() => handleAdvanceSelect(opt.value)}
+                accessibilityRole="radio"
+                accessibilityLabel={opt.label}
+                accessibilityState={{ checked: advanceMinutes === opt.value }}
+                style={({ pressed }) => [
+                  styles.advanceItem,
+                  advanceMinutes === opt.value && styles.advanceItemActive,
+                  { transform: [{ scale: pressed ? 0.96 : 1 }] },
+                ]}
+              >
+                <View style={[styles.advanceDot, advanceMinutes === opt.value && styles.advanceDotActive]} />
+                <View style={styles.advanceTextWrap}>
+                  <Text style={[styles.advanceLabel, advanceMinutes === opt.value && styles.advanceLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.advanceDesc, advanceMinutes === opt.value && styles.advanceDescActive]}>
+                    {opt.description}
+                  </Text>
+                </View>
+                {advanceMinutes === opt.value && (
+                  <Text style={styles.advanceCheck}>✓</Text>
+                )}
+              </Pressable>
+            ))}
+          </View>
+
+          {advanceMinutes > 0 && selectedTime && (() => {
+            const totalMinutes = selectedTime.hour * 60 + selectedTime.minute - advanceMinutes;
+            const adjHour = ((Math.floor(totalMinutes / 60)) % 24 + 24) % 24;
+            const adjMin = ((totalMinutes % 60) + 60) % 60;
+            const h = adjHour % 12 || 12;
+            const m = adjMin.toString().padStart(2, '0');
+            const ampm = adjHour < 12 ? 'AM' : 'PM';
+            return (
+              <View style={styles.advanceInfo}>
+                <Text style={styles.advanceInfoText}>
+                  📣 Te avisaré a las {h}:{m} {ampm} ({advanceMinutes} min antes de las {formatTimeDisplay(selectedTime.hour, selectedTime.minute)})
+                </Text>
+              </View>
+            );
+          })()}
+        </View>
 
         {/* ── NUEVA SECCIÓN: ¿Cada cuánto te recuerdo? ── */}
         <View style={styles.snoozeSection}>
@@ -465,6 +528,86 @@ const styles = StyleSheet.create({
   snoozeInfoText: {
     fontSize: 15,
     color: '#92400E',
+    lineHeight: 22,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  // ── Advance (anticipación) ──
+  advanceSection: {
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  advanceRoller: {
+    gap: 8,
+  },
+  advanceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    gap: 12,
+  },
+  advanceItemActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#1A56DB',
+  },
+  advanceDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    backgroundColor: 'transparent',
+  },
+  advanceDotActive: {
+    borderColor: '#1A56DB',
+    backgroundColor: '#1A56DB',
+  },
+  advanceTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  advanceLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  advanceLabelActive: {
+    color: '#1A56DB',
+  },
+  advanceDesc: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  advanceDescActive: {
+    color: '#3B82F6',
+  },
+  advanceCheck: {
+    fontSize: 20,
+    color: '#1A56DB',
+    fontWeight: '800',
+  },
+  advanceInfo: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  advanceInfoText: {
+    fontSize: 15,
+    color: '#1E40AF',
     lineHeight: 22,
     textAlign: 'center',
     fontWeight: '500',

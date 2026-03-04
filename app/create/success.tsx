@@ -10,7 +10,7 @@ import { useTaskContext } from '@/lib/task-context';
 import { useSettingsContext } from '@/lib/settings-context';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { scheduleTaskNotification, scheduleSnoozeNotifications } from '@/lib/notification-service';
-import { Task, Priority, RepeatType, SnoozeInterval } from '@/lib/task-types';
+import { Task, Priority, RepeatType, SnoozeInterval, AdvanceMinutes } from '@/lib/task-types';
 
 function generateId(): string {
   return `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -29,7 +29,7 @@ export default function SuccessScreen() {
   const { settings } = useSettingsContext();
   const {
     text, priority, repeatType, hour, minute,
-    customDay, customMonth, customYear, snoozeInterval,
+    customDay, customMonth, customYear, snoozeInterval, advanceMinutes,
   } = useLocalSearchParams<{
     text: string;
     priority: string;
@@ -37,6 +37,7 @@ export default function SuccessScreen() {
     hour: string;
     minute: string;
     snoozeInterval?: string;
+    advanceMinutes?: string;
     customDay?: string;
     customMonth?: string;
     customYear?: string;
@@ -45,6 +46,12 @@ export default function SuccessScreen() {
   const taskHour = parseInt(hour ?? '9', 10);
   const taskMinute = parseInt(minute ?? '0', 10);
   const parsedSnooze = (parseInt(snoozeInterval ?? '0', 10) as SnoozeInterval) || 0;
+  const parsedAdvance = (parseInt(advanceMinutes ?? '0', 10) as AdvanceMinutes) || 0;
+
+  // Calcular la hora real de la notificación (restando los minutos de anticipación)
+  const notifTotalMin = taskHour * 60 + taskMinute - parsedAdvance;
+  const notifHour = ((Math.floor(notifTotalMin / 60)) % 24 + 24) % 24;
+  const notifMinute = ((notifTotalMin % 60) + 60) % 60;
 
   useEffect(() => {
     const saveTask = async () => {
@@ -53,8 +60,9 @@ export default function SuccessScreen() {
         text: text ?? '',
         priority: (priority as Priority) ?? 'medium',
         repeatType: (repeatType as RepeatType) ?? 'once',
-        reminderTime: { hour: taskHour, minute: taskMinute },
+        reminderTime: { hour: notifHour, minute: notifMinute },
         snoozeInterval: parsedSnooze,
+        advanceMinutes: parsedAdvance,
         completed: false,
         createdAt: new Date().toISOString(),
         ...(customDay && customMonth && customYear ? {

@@ -13,7 +13,7 @@ import { StepIndicator } from '@/components/step-indicator';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
 import { useEffect } from 'react';
-import { Priority, SnoozeInterval } from '@/lib/task-types';
+import { Priority, SnoozeInterval, AdvanceMinutes } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
 
@@ -68,6 +68,7 @@ export default function Step6Screen() {
     customMonth,
     customYear,
     snoozeInterval,
+    advanceMinutes,
   } = useLocalSearchParams<{
     text: string;
     priority: string;
@@ -75,12 +76,17 @@ export default function Step6Screen() {
     hour: string;
     minute: string;
     snoozeInterval?: string;
+    advanceMinutes?: string;
     customDay?: string;
     customMonth?: string;
     customYear?: string;
   }>();
 
   const parsedSnooze = (parseInt(snoozeInterval ?? '0', 10) as SnoozeInterval) || 0;
+  const parsedAdvance = (parseInt(advanceMinutes ?? '0', 10) as AdvanceMinutes) || 0;
+  const advanceLabel = parsedAdvance === 0
+    ? '⏰ Justo a la hora'
+    : `${parsedAdvance} minutos antes`;
   const snoozeLabel = parsedSnooze === 0
     ? 'Sin repetición adicional'
     : `Cada ${parsedSnooze} min (3 veces más)`;
@@ -109,6 +115,7 @@ export default function Step6Screen() {
     if (customMonth) params.customMonth = customMonth;
     if (customYear) params.customYear = customYear;
     params.snoozeInterval = parsedSnooze.toString();
+    params.advanceMinutes = parsedAdvance.toString();
 
     router.push({ pathname: '/create/success', params });
   }, [text, priority, repeatType, hour, minute, customDay, customMonth, customYear, router]);
@@ -181,6 +188,32 @@ export default function Step6Screen() {
                   📌 {formatCustomDate(customDay, customMonth, customYear)}
                 </Text>
               )}
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Anticipación */}
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryIcon}>🔔</Text>
+            <View style={styles.summaryContent}>
+              <Text style={styles.summaryLabel}>¿Con cuánta anticipación?</Text>
+              <Text style={[styles.summaryValueLarge, parsedAdvance > 0 && { color: '#1A56DB' }]}>
+                {advanceLabel}
+              </Text>
+              {parsedAdvance > 0 && (() => {
+                const totalMin = taskHour * 60 + taskMinute - parsedAdvance;
+                const adjH = ((Math.floor(totalMin / 60)) % 24 + 24) % 24;
+                const adjM = ((totalMin % 60) + 60) % 60;
+                const h = adjH % 12 || 12;
+                const m = adjM.toString().padStart(2, '0');
+                const ampm = adjH < 12 ? 'AM' : 'PM';
+                return (
+                  <Text style={styles.summarySubtext}>
+                    📣 Te avisaré a las {h}:{m} {ampm}
+                  </Text>
+                );
+              })()}
             </View>
           </View>
 

@@ -93,3 +93,7 @@
 - [x] AppState: leer recordatorio en voz alta al desbloquear el teléfono tras recibir notificación
 
 - [x] Ajustes: opción para configurar el tiempo de espera antes de leer al desbloquear (0s/1s/3s/5s/10s)
+
+- [x] Step 5: sección "¿Con cuánta anticipación te aviso?" con opciones Justo a la hora / 5 / 10 / 15 / 30 min antes (picker/rollbar)
+- [x] Tipos: agregar advanceMinutes a Task
+- [x] Step 6 y success: usar advanceMinutes al programar la notificación (hora real = hora - anticipación)

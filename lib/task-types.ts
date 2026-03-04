@@ -17,6 +17,9 @@ export interface ReminderTime {
 /** Intervalo de repetición post-recordatorio en minutos. 0 = sin repetición. */
 export type SnoozeInterval = 0 | 5 | 10 | 15;
 
+/** Minutos de anticipación antes de la hora del recordatorio. 0 = justo a la hora. */
+export type AdvanceMinutes = 0 | 5 | 10 | 15 | 30;
+
 export interface Task {
   id: string;
   text: string;
@@ -26,6 +29,7 @@ export interface Task {
   reminderTime: ReminderTime;
   snoozeInterval: SnoozeInterval; // 0 = sin repetición, 5/10/15 = cada N minutos
   snoozeNotificationIds?: string[]; // IDs de notificaciones de snooze programadas
+  advanceMinutes: AdvanceMinutes; // 0 = justo a la hora, 5/10/15/30 = N min antes
   completed: boolean;
   createdAt: string; // ISO string para serialización con AsyncStorage
   completedAt?: string; // ISO string
@@ -76,6 +80,14 @@ export const REPEAT_CONFIG: Record<RepeatType, { label: string; emoji: string; d
   monthly: { label: 'Mensual', emoji: '🗓️', description: 'Una vez al mes' },
   custom: { label: 'Fecha específica', emoji: '📌', description: 'Elige un día' },
 };
+
+export const ADVANCE_OPTIONS: Array<{ label: string; description: string; value: AdvanceMinutes }> = [
+  { label: '⏰ Justo a la hora', description: 'Te aviso exactamente a la hora', value: 0 },
+  { label: '5 min antes', description: 'Te aviso 5 minutos antes', value: 5 },
+  { label: '10 min antes', description: 'Te aviso 10 minutos antes', value: 10 },
+  { label: '15 min antes', description: 'Te aviso 15 minutos antes', value: 15 },
+  { label: '30 min antes', description: 'Te aviso media hora antes', value: 30 },
+];
 
 export const SNOOZE_OPTIONS: Array<{ label: string; description: string; value: SnoozeInterval }> = [
   { label: 'Sin repetir', description: 'Solo una vez', value: 0 },
