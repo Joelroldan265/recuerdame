@@ -100,3 +100,5 @@
 
 - [x] Notificaciones: alarma sonora (canal ALARM, bypassDnd, vibración larga) para prioridad alta
 - [x] Notificaciones: notificación estándar (media con sonido, baja sin sonido) para prioridad media y baja
+
+- [x] TaskCard: badge "🔔 ALARMA" pulsante, franja roja superior, fondo rojizo y nota de alarma para prioridad alta

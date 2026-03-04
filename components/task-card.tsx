@@ -1,5 +1,5 @@
-import React, { memo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { memo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 import { Task, PRIORITY_CONFIG } from '@/lib/task-types';
@@ -32,6 +32,35 @@ function getRepeatLabel(task: Task): string {
   return labels[task.repeatType] ?? '';
 }
 
+/** Componente interno que pulsa suavemente para las tarjetas de alarma */
+function AlarmPulse() {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(scale,   { toValue: 1.04, duration: 700, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 1,    duration: 700, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(scale,   { toValue: 1,    duration: 700, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.8,  duration: 700, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [scale, opacity]);
+
+  return (
+    <Animated.View style={[styles.alarmBadge, { transform: [{ scale }], opacity }]}>
+      <Text style={styles.alarmBadgeText}>🔔 ALARMA</Text>
+    </Animated.View>
+  );
+}
+
 export const TaskCard = memo(function TaskCard({
   task,
   onPress,
@@ -40,6 +69,7 @@ export const TaskCard = memo(function TaskCard({
   voiceSpeed = 1.0,
 }: TaskCardProps) {
   const config = PRIORITY_CONFIG[task.priority];
+  const isHighPriority = task.priority === 'high';
 
   const handleComplete = () => {
     if (Platform.OS !== 'web') {
@@ -66,29 +96,50 @@ export const TaskCard = memo(function TaskCard({
     <Pressable
       onPress={() => onPress(task)}
       accessibilityRole="button"
-      accessibilityLabel={`Tarea: ${task.text}. Prioridad ${config.label}. A las ${formatTime(task.reminderTime.hour, task.reminderTime.minute)}`}
+      accessibilityLabel={`Tarea${isHighPriority ? ' urgente con alarma' : ''}: ${task.text}. Prioridad ${config.label}. A las ${formatTime(task.reminderTime.hour, task.reminderTime.minute)}`}
       style={({ pressed }) => [
         styles.card,
+        isHighPriority && styles.cardHighPriority,
         { borderLeftColor: config.color, opacity: pressed ? 0.85 : 1 },
         task.completed && styles.completedCard,
       ]}
     >
+      {/* Franja superior de alarma — solo para prioridad alta */}
+      {isHighPriority && !task.completed && (
+        <View style={styles.alarmStripe}>
+          <Text style={styles.alarmStripeText}>⚠️ PRIORIDAD ALTA — ALARMA ACTIVADA</Text>
+        </View>
+      )}
+
       <View style={styles.content}>
         <View style={styles.header}>
-          <PriorityBadge priority={task.priority} size="sm" />
+          <View style={styles.headerLeft}>
+            <PriorityBadge priority={task.priority} size="sm" />
+            {/* Badge pulsante de alarma */}
+            {isHighPriority && !task.completed && <AlarmPulse />}
+          </View>
           <Text style={styles.time}>
             🕐 {formatTime(task.reminderTime.hour, task.reminderTime.minute)}
           </Text>
         </View>
 
         <Text
-          style={[styles.text, task.completed && styles.completedText]}
+          style={[
+            styles.text,
+            isHighPriority && styles.textHighPriority,
+            task.completed && styles.completedText,
+          ]}
           numberOfLines={3}
         >
           {task.text}
         </Text>
 
-        <Text style={styles.repeat}>🔁 {getRepeatLabel(task)}</Text>
+        <View style={styles.footer}>
+          <Text style={styles.repeat}>🔁 {getRepeatLabel(task)}</Text>
+          {isHighPriority && !task.completed && (
+            <Text style={styles.alarmNote}>Sonará aunque el teléfono esté en silencio</Text>
+          )}
+        </View>
       </View>
 
       {!task.completed && (
@@ -138,14 +189,36 @@ const styles = StyleSheet.create({
     borderLeftWidth: 5,
     marginVertical: 6,
     marginHorizontal: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
+  },
+  /** Tarjeta de alta prioridad: fondo levemente rojizo y sombra más pronunciada */
+  cardHighPriority: {
+    backgroundColor: '#FFF5F5',
+    borderLeftWidth: 6,
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  /** Franja roja en la parte superior */
+  alarmStripe: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 5,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  alarmStripeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
   completedCard: {
     opacity: 0.6,
@@ -154,6 +227,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     gap: 6,
+    padding: 16,
   },
   header: {
     flexDirection: 'row',
@@ -161,11 +235,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 4,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  /** Badge pulsante 🔔 ALARMA */
+  alarmBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  alarmBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   text: {
     fontSize: 20,
     fontWeight: '600',
     color: '#111827',
     lineHeight: 28,
+  },
+  textHighPriority: {
+    color: '#7F1D1D',
+    fontWeight: '700',
   },
   completedText: {
     textDecorationLine: 'line-through',
@@ -176,15 +273,27 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
   },
+  footer: {
+    gap: 2,
+  },
   repeat: {
     fontSize: 13,
     color: '#9CA3AF',
     marginTop: 2,
   },
+  alarmNote: {
+    fontSize: 12,
+    color: '#EF4444',
+    fontWeight: '500',
+    marginTop: 2,
+  },
   actions: {
     flexDirection: 'column',
     gap: 8,
-    marginLeft: 12,
+    marginLeft: 4,
+    paddingRight: 12,
+    paddingVertical: 16,
+    alignSelf: 'flex-end',
   },
   actionBtn: {
     width: 48,
@@ -213,6 +322,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 12,
+    alignSelf: 'center',
   },
   completedBadgeText: {
     color: '#FFFFFF',
