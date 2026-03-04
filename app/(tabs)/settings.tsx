@@ -466,7 +466,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🔔 Tipo de notificación</Text>
           <Text style={[styles.rowDescription, { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }]}>
-            Elige si las notificaciones suenan con alarma o llegan como mensaje silencioso.
+            Elige cómo quieres que suenen tus recordatorios.
           </Text>
           <View style={styles.notifStyleGrid}>
             {(['alarm', 'message'] as NotificationStyle[]).map((style) => {
@@ -480,12 +480,12 @@ export default function SettingsScreen() {
                   accessibilityState={{ checked: isActive }}
                 >
                   <Text style={[styles.notifStyleLabel, isActive && styles.notifStyleLabelActive]}>
-                    {style === 'alarm' ? '🔊 Alarma' : '💬 Mensaje'}
+                    {style === 'alarm' ? '🔔 Alarma' : '🗣️ Frases de voz'}
                   </Text>
                   <Text style={[styles.notifStyleDesc, isActive && styles.notifStyleDescActive]}>
                     {style === 'alarm'
-                      ? 'Suena aunque el teléfono esté en silencio'
-                      : 'Notificación silenciosa, sin sonido de alarma'}
+                      ? 'Suena el tono de alarma al recibir la notificación'
+                      : 'Lee el texto del recordatorio en voz alta al abrir la notificación'}
                   </Text>
                   {isActive && <Text style={styles.notifStyleCheck}>✓ Seleccionado</Text>}
                 </Pressable>

@@ -168,3 +168,8 @@
 - [x] Ajustes: configuración de lectura programada (3 franjas horarias, toggle por franja, ajuste de hora)
 - [x] Ajustes: opción para elegir entre Alarma o Mensaje silencioso en notificaciones
 - [x] Step6 (resumen): edición inline completa sin regresar (texto, prioridad, hora nativa, repetición, anticipación, snooze)
+
+## Mejora UI: Tipo de notificación
+
+- [x] Actualizar etiquetas en Ajustes: "🔔 Alarma" y "🗣️ Frases de voz" con descripción clara de cada opción
+- [x] Descripción: Alarma = "Suena el tono al recibir", Frases = "Lee el texto en voz alta al abrir"
