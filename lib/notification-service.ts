@@ -107,24 +107,25 @@ async function registerNotificationCategories(): Promise<void> {
 /**
  * Crea los 3 canales Android y solicita permisos.
  * Idempotente — seguro llamarlo múltiples veces.
+ * @param alarmSound - Sonido de alarma seleccionado por el usuario (para el canal ALARM)
  */
-export async function initNotificationsLazy(): Promise<boolean> {
+export async function initNotificationsLazy(alarmSound?: string): Promise<boolean> {
   if (permissionGranted !== null) return permissionGranted;
 
   try {
     if (Platform.OS === 'android') {
       // Canal ALARMA — prioridad alta
-      // Suena: tono de alarma (alarm.wav) + voz "Tienes una tarea urgente" (urgente.mp3)
+      // Suena: el tono de alarma elegido por el usuario (alarm_classic, alarm_urgent, etc.)
       // Android solo puede reproducir UN sonido por notificación.
-      // Usamos 'urgente' (la frase hablada) como sonido del canal.
-      // El tono alarm.wav se reproduce por separado via expo-audio al abrir la app.
+      // El canal se crea con el sonido actual; si el usuario cambia el sonido,
+      // la app debe reiniciarse para que el canal se recree con el nuevo sonido.
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ALARM, {
         name: '🔴 Recordatorios urgentes (Alarma)',
         description: 'Alarma con voz para recordatorios de prioridad alta. Suena aunque el teléfono esté en silencio.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 500, 200, 500, 200, 500],
         lightColor: '#EF4444',
-        sound: 'urgente',   // ← res/raw/urgente.mp3 — "Tienes una tarea urgente"
+        sound: alarmSound ?? 'alarm_classic',   // ← res/raw/{alarmSound}.wav — sonido elegido por el usuario
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -192,6 +193,10 @@ export async function initNotificationsLazy(): Promise<boolean> {
   }
 }
 
+/**
+ * Reinicia el caché de permisos para que initNotificationsLazy() pueda recrear los canales.
+ * Útsalo cuando el usuario cambia el sonido de alarma en Ajustes.
+ */
 export function resetNotificationPermissionCache(): void {
   permissionGranted = null;
   categoriesRegistered = false;
@@ -237,17 +242,19 @@ function buildNotificationContent(
       : `${emoji} Recordatorio`
   );
 
+  // Para prioridad alta: usa el sonido de alarma seleccionado por el usuario (alarm_classic, alarm_urgent, etc.)
+  // Para prioridad media: usa la voz hablada 'media'
+  // Para prioridad baja: usa la voz suave 'baja'
+  const alarmSound = settings.alarmSound ?? 'alarm_classic';
+  const sound: string | boolean = isHigh
+    ? alarmSound
+    : (!isLow && settings.soundEnabled) ? 'media' : 'baja';
+
   return {
     title,
     body: task.text,
     data: { taskId: task.id, taskText: task.text, action: 'reminder', ...extraData },
-    // Cada prioridad usa su propio archivo de voz hablada (res/raw/)
-    // Alta   → 'urgente' ("Tienes una tarea urgente")
-    // Media  → 'media'   ("Tienes una tarea que aún no es urgente...")
-    // Baja   → 'baja'    ("Tienes una tarea pendiente que no urge...")
-    sound: isHigh
-      ? 'urgente'
-      : (!isLow && settings.soundEnabled) ? 'media' : 'baja',
+    sound,
     categoryIdentifier: NOTIFICATION_CATEGORY_REMINDER,
   };
 }
@@ -259,7 +266,7 @@ export async function scheduleTaskNotification(
   settings: Settings,
 ): Promise<string | null> {
   try {
-    const hasPermission = await initNotificationsLazy();
+    const hasPermission = await initNotificationsLazy(settings.alarmSound);
     if (!hasPermission) return null;
 
     // Respetar "No molestar" solo para prioridad media y baja

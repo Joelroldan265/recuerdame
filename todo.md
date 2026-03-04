@@ -109,3 +109,13 @@
 - [x] Generar urgente.mp3, media.mp3, baja.mp3 con frases habladas (gTTS español)
 - [x] Cada canal Android usa su archivo de voz correspondiente como sonido de notificación
 - [x] Botón "🔇 Silenciar" en la notificación para detener TTS y limpiar texto pendiente
+
+## Nuevas Mejoras
+
+- [x] Editar tarea existente (texto, prioridad, hora) desde pantalla de detalle
+- [x] Botón posponer 5/10/15 min en pantalla de detalle de tarea
+- [x] Sonidos de alarma como audio web (base64 WAV) con múltiples opciones en Ajustes
+- [x] Grabar mensajes de voz personalizados para notificaciones en Ajustes
+- [x] Scroll ágil (snap) para selector de hora en Step 5
+- [x] Notificaciones: usar sonido de alarma seleccionado por el usuario en canal ALARM
+- [x] Settings: reiniciar caché de notificaciones al cambiar sonido de alarma

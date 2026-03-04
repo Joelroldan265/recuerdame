@@ -7,11 +7,12 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { ScreenContainer } from '@/components/screen-container';
 import { useSettingsContext } from '@/lib/settings-context';
 import { speak } from '@/lib/speech-service';
-import { scheduleTestNotification } from '@/lib/notification-service';
-import { UNLOCK_DELAY_OPTIONS, UnlockReadDelay } from '@/lib/task-types';
+import { scheduleTestNotification, resetNotificationPermissionCache } from '@/lib/notification-service';
+import { UNLOCK_DELAY_OPTIONS, UnlockReadDelay, ALARM_SOUND_OPTIONS, AlarmSound } from '@/lib/task-types';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
@@ -99,6 +100,7 @@ function TimeSelector({
 
 export default function SettingsScreen() {
   const { settings, updateSettings } = useSettingsContext();
+  const router = useRouter();
 
   const handleToggle = useCallback((key: keyof typeof settings, value: boolean) => {
     if (Platform.OS !== 'web') {
@@ -147,8 +149,18 @@ export default function SettingsScreen() {
     updateSettings({ unlockReadDelay: delay });
   }, [updateSettings]);
 
+  const handleAlarmSoundChange = useCallback((sound: AlarmSound) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    updateSettings({ alarmSound: sound });
+    // Reiniciar caché para que el canal Android se recree con el nuevo sonido
+    resetNotificationPermissionCache();
+  }, [updateSettings]);
+
   // Valor actual con fallback para settings guardados antes de esta versión
   const currentDelay: UnlockReadDelay = (settings.unlockReadDelay ?? 1000) as UnlockReadDelay;
+  const currentAlarmSound: AlarmSound = (settings.alarmSound ?? 'alarm_classic') as AlarmSound;
 
   return (
     <ScreenContainer>
@@ -221,6 +233,55 @@ export default function SettingsScreen() {
               💡 Si tu dispositivo tarda en iniciar el audio al encenderse, usa un tiempo mayor (3–5 segundos).
             </Text>
           </View>
+        </View>
+
+        {/* Sonido de alarma */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔊 Sonido de alarma (prioridad alta)</Text>
+          <Text style={[styles.rowDescription, { paddingHorizontal: 16, marginBottom: 12 }]}>
+            Elige el tono que suena cuando llega un recordatorio de prioridad alta. Funciona aunque el teléfono esté en silencio.
+          </Text>
+          <View style={styles.alarmSoundGrid}>
+            {ALARM_SOUND_OPTIONS.map((opt) => {
+              const isActive = currentAlarmSound === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => handleAlarmSoundChange(opt.value)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${opt.label}: ${opt.description}`}
+                  accessibilityState={{ checked: isActive }}
+                  style={[styles.alarmSoundBtn, isActive && styles.alarmSoundBtnActive]}
+                >
+                  <Text style={[styles.alarmSoundLabel, isActive && styles.alarmSoundLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.alarmSoundDesc, isActive && styles.alarmSoundDescActive]}>
+                    {opt.description}
+                  </Text>
+                  {isActive && (
+                    <Text style={styles.alarmSoundCheck}>✓ Seleccionado</Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Mensajes de voz personalizados */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🎤 Mensajes de voz personalizados</Text>
+          <Text style={[styles.rowDescription, { paddingHorizontal: 16, paddingBottom: 12 }]}>
+            Graba tus propios mensajes para cada nivel de prioridad en lugar de los predeterminados.
+          </Text>
+          <Pressable
+            onPress={() => router.push('/custom-voice')}
+            style={styles.customVoiceBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Ir a mensajes de voz personalizados"
+          >
+            <Text style={styles.customVoiceBtnText}>🎤 Personalizar mensajes de voz →</Text>
+          </Pressable>
         </View>
 
         {/* Accesibilidad */}
@@ -476,6 +537,45 @@ const styles = StyleSheet.create({
     color: '#92400E',
     lineHeight: 18,
   },
+  // ── Sonido de alarma ────────────────────────────────────────────────────────
+  alarmSoundGrid: {
+    padding: 16,
+    gap: 10,
+  },
+  alarmSoundBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 2,
+  },
+  alarmSoundBtnActive: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#EA580C',
+  },
+  alarmSoundLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  alarmSoundLabelActive: {
+    color: '#EA580C',
+  },
+  alarmSoundDesc: {
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  alarmSoundDescActive: {
+    color: '#F97316',
+  },
+  alarmSoundCheck: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#EA580C',
+    marginTop: 4,
+  },
   // ── No molestar ─────────────────────────────────────────────────────────────
   dndTimes: {
     padding: 16,
@@ -566,5 +666,19 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  customVoiceBtn: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#1A56DB',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  customVoiceBtnText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

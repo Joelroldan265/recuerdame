@@ -1,14 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+'use client';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   ScrollView,
+  FlatList,
   Platform,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { ScreenContainer } from '@/components/screen-container';
 import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
@@ -17,6 +21,161 @@ import { useSettingsContext } from '@/lib/settings-context';
 import { QUICK_TIMES, SNOOZE_OPTIONS, ADVANCE_OPTIONS, ReminderTime, SnoozeInterval, AdvanceMinutes } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora', 'Resumen'];
+
+// ── Scroll Picker ──────────────────────────────────────────────────────────────
+const ITEM_HEIGHT = 56;
+const VISIBLE_ITEMS = 5;
+const PICKER_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
+
+interface ScrollPickerProps {
+  items: string[];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+  width?: number;
+}
+
+function ScrollPicker({ items, selectedIndex, onSelect, width = 80 }: ScrollPickerProps) {
+  const flatRef = useRef<FlatList>(null);
+  const isScrolling = useRef(false);
+
+  // Scroll to selected item on mount and when selectedIndex changes externally
+  useEffect(() => {
+    if (!isScrolling.current) {
+      flatRef.current?.scrollToIndex({ index: selectedIndex, animated: false, viewPosition: 0.5 });
+    }
+  }, [selectedIndex]);
+
+  const handleScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isScrolling.current = false;
+      const offsetY = e.nativeEvent.contentOffset.y;
+      const index = Math.round(offsetY / ITEM_HEIGHT);
+      const clamped = Math.max(0, Math.min(index, items.length - 1));
+      onSelect(clamped);
+      // Snap to exact position
+      flatRef.current?.scrollToIndex({ index: clamped, animated: true, viewPosition: 0.5 });
+      if (Platform.OS !== 'web') {
+        Haptics.selectionAsync();
+      }
+    },
+    [items.length, onSelect],
+  );
+
+  const handleScrollBegin = useCallback(() => {
+    isScrolling.current = true;
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: string; index: number }) => {
+      const isSelected = index === selectedIndex;
+      return (
+        <Pressable
+          onPress={() => {
+            onSelect(index);
+            flatRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+            if (Platform.OS !== 'web') {
+              Haptics.selectionAsync();
+            }
+          }}
+          style={[styles.pickerItem, isSelected && styles.pickerItemSelected]}
+        >
+          <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextSelected]}>
+            {item}
+          </Text>
+        </Pressable>
+      );
+    },
+    [selectedIndex, onSelect],
+  );
+
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({
+      length: ITEM_HEIGHT,
+      offset: ITEM_HEIGHT * index,
+      index,
+    }),
+    [],
+  );
+
+  // Padding items to center first and last
+  const paddedItems = ['', '', ...items, '', ''];
+  const paddedSelectedIndex = selectedIndex + 2;
+
+  return (
+    <View style={[styles.pickerContainer, { width }]}>
+      {/* Selection highlight */}
+      <View style={styles.pickerHighlight} pointerEvents="none" />
+      <FlatList
+        ref={flatRef}
+        data={paddedItems}
+        keyExtractor={(_, i) => String(i)}
+        renderItem={({ item, index }) => {
+          const realIndex = index - 2;
+          const isSelected = realIndex === selectedIndex;
+          const isEdge = realIndex < 0 || realIndex >= items.length;
+          return (
+            <Pressable
+              onPress={() => {
+                if (isEdge) return;
+                onSelect(realIndex);
+                flatRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+                if (Platform.OS !== 'web') {
+                  Haptics.selectionAsync();
+                }
+              }}
+              style={[styles.pickerItem]}
+            >
+              <Text
+                style={[
+                  styles.pickerItemText,
+                  isSelected && styles.pickerItemTextSelected,
+                  isEdge && { opacity: 0 },
+                ]}
+              >
+                {item}
+              </Text>
+            </Pressable>
+          );
+        }}
+        getItemLayout={(_, index) => ({
+          length: ITEM_HEIGHT,
+          offset: ITEM_HEIGHT * index,
+          index,
+        })}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={ITEM_HEIGHT}
+        decelerationRate="fast"
+        onScrollBeginDrag={handleScrollBegin}
+        onMomentumScrollEnd={(e) => {
+          isScrolling.current = false;
+          const offsetY = e.nativeEvent.contentOffset.y;
+          const index = Math.round(offsetY / ITEM_HEIGHT);
+          const realIndex = Math.max(0, Math.min(index, items.length - 1));
+          onSelect(realIndex);
+          if (Platform.OS !== 'web') {
+            Haptics.selectionAsync();
+          }
+        }}
+        onScrollEndDrag={(e) => {
+          // Handle case where momentum doesn't fire (slow scroll)
+          const offsetY = e.nativeEvent.contentOffset.y;
+          const index = Math.round(offsetY / ITEM_HEIGHT);
+          const realIndex = Math.max(0, Math.min(index, items.length - 1));
+          onSelect(realIndex);
+          flatRef.current?.scrollToOffset({ offset: index * ITEM_HEIGHT, animated: true });
+        }}
+        initialScrollIndex={paddedSelectedIndex - 2}
+        style={{ height: PICKER_HEIGHT }}
+        contentContainerStyle={{ paddingVertical: 0 }}
+      />
+    </View>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
+const HOURS_12 = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')); // 01-12
+const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')); // 00-59
+const AMPM = ['AM', 'PM'];
 
 export default function Step5Screen() {
   const router = useRouter();
@@ -32,9 +191,13 @@ export default function Step5Screen() {
 
   const [selectedTime, setSelectedTime] = useState<ReminderTime | null>(null);
   const [selectedQuick, setSelectedQuick] = useState<number | null>(null);
-  const [customHour, setCustomHour] = useState(9);
-  const [customMinute, setCustomMinute] = useState(0);
+
+  // Scroll picker state (12-hour format)
+  const [hourIndex, setHourIndex] = useState(8); // 09 (index 8 = "09")
+  const [minuteIndex, setMinuteIndex] = useState(0); // 00
+  const [ampmIndex, setAmpmIndex] = useState(0); // AM
   const [useCustom, setUseCustom] = useState(false);
+
   const [snoozeInterval, setSnoozeInterval] = useState<SnoozeInterval>(0);
   const [advanceMinutes, setAdvanceMinutes] = useState<AdvanceMinutes>(0);
 
@@ -44,6 +207,42 @@ export default function Step5Screen() {
     }
   }, []);
 
+  // Convert 12h picker state to 24h hour
+  const get24Hour = useCallback((hIdx: number, apIdx: number) => {
+    const h12 = hIdx + 1; // index 0 = 1, index 11 = 12
+    if (apIdx === 0) {
+      // AM
+      return h12 === 12 ? 0 : h12;
+    } else {
+      // PM
+      return h12 === 12 ? 12 : h12 + 12;
+    }
+  }, []);
+
+  const handleHourChange = useCallback((index: number) => {
+    setHourIndex(index);
+    setUseCustom(true);
+    setSelectedQuick(null);
+    const hour24 = get24Hour(index, ampmIndex);
+    setSelectedTime({ hour: hour24, minute: minuteIndex });
+  }, [ampmIndex, minuteIndex, get24Hour]);
+
+  const handleMinuteChange = useCallback((index: number) => {
+    setMinuteIndex(index);
+    setUseCustom(true);
+    setSelectedQuick(null);
+    const hour24 = get24Hour(hourIndex, ampmIndex);
+    setSelectedTime({ hour: hour24, minute: index });
+  }, [hourIndex, ampmIndex, get24Hour]);
+
+  const handleAmpmChange = useCallback((index: number) => {
+    setAmpmIndex(index);
+    setUseCustom(true);
+    setSelectedQuick(null);
+    const hour24 = get24Hour(hourIndex, index);
+    setSelectedTime({ hour: hour24, minute: minuteIndex });
+  }, [hourIndex, minuteIndex, get24Hour]);
+
   const handleQuickSelect = useCallback((index: number) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -52,27 +251,12 @@ export default function Step5Screen() {
     setSelectedQuick(index);
     setSelectedTime({ hour: qt.hour, minute: qt.minute });
     setUseCustom(false);
+    // Sync pickers to quick time
+    const h12 = qt.hour % 12 || 12;
+    setHourIndex(h12 - 1);
+    setMinuteIndex(qt.minute);
+    setAmpmIndex(qt.hour < 12 ? 0 : 1);
   }, []);
-
-  const handleHourChange = useCallback((delta: number) => {
-    setCustomHour((prev) => {
-      const next = (prev + delta + 24) % 24;
-      setSelectedTime({ hour: next, minute: customMinute });
-      return next;
-    });
-    setUseCustom(true);
-    setSelectedQuick(null);
-  }, [customMinute]);
-
-  const handleMinuteChange = useCallback((delta: number) => {
-    setCustomMinute((prev) => {
-      const next = (prev + delta + 60) % 60;
-      setSelectedTime({ hour: customHour, minute: next });
-      return next;
-    });
-    setUseCustom(true);
-    setSelectedQuick(null);
-  }, [customHour]);
 
   const handleSnoozeSelect = useCallback((value: SnoozeInterval) => {
     if (Platform.OS !== 'web') {
@@ -148,65 +332,49 @@ export default function Step5Screen() {
           </View>
         </View>
 
-        {/* Reloj personalizado */}
+        {/* ── Scroll Wheel Picker ── */}
         <View style={styles.clockSection}>
           <Text style={styles.sectionLabel}>Hora personalizada</Text>
-          <View style={styles.clockDisplay}>
-            {/* Horas */}
-            <View style={styles.clockColumn}>
-              <Pressable
-                onPress={() => handleHourChange(1)}
-                style={styles.clockArrow}
-                accessibilityLabel="Aumentar hora"
-              >
-                <Text style={styles.clockArrowText}>▲</Text>
-              </Pressable>
-              <Text style={[styles.clockValue, useCustom && styles.clockValueActive]}>
-                {(customHour % 12 || 12).toString().padStart(2, '0')}
-              </Text>
-              <Pressable
-                onPress={() => handleHourChange(-1)}
-                style={styles.clockArrow}
-                accessibilityLabel="Disminuir hora"
-              >
-                <Text style={styles.clockArrowText}>▼</Text>
-              </Pressable>
-            </View>
+          <View style={styles.pickerWrapper}>
+            {/* Gradient overlays for fade effect */}
+            <View style={styles.pickerFadeTop} pointerEvents="none" />
+            <View style={styles.pickerFadeBottom} pointerEvents="none" />
 
-            <Text style={styles.clockSeparator}>:</Text>
+            <View style={styles.pickerRow}>
+              {/* Hours */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>Hora</Text>
+                <ScrollPicker
+                  items={HOURS_12}
+                  selectedIndex={hourIndex}
+                  onSelect={handleHourChange}
+                  width={72}
+                />
+              </View>
 
-            {/* Minutos */}
-            <View style={styles.clockColumn}>
-              <Pressable
-                onPress={() => handleMinuteChange(1)}
-                style={styles.clockArrow}
-                accessibilityLabel="Aumentar minutos"
-              >
-                <Text style={styles.clockArrowText}>▲</Text>
-              </Pressable>
-              <Text style={[styles.clockValue, useCustom && styles.clockValueActive]}>
-                {customMinute.toString().padStart(2, '0')}
-              </Text>
-              <Pressable
-                onPress={() => handleMinuteChange(-1)}
-                style={styles.clockArrow}
-                accessibilityLabel="Disminuir minutos"
-              >
-                <Text style={styles.clockArrowText}>▼</Text>
-              </Pressable>
-            </View>
+              <Text style={styles.pickerSeparator}>:</Text>
 
-            {/* AM/PM */}
-            <View style={styles.clockColumn}>
-              <Pressable
-                onPress={() => handleHourChange(12)}
-                style={styles.ampmBtn}
-                accessibilityLabel="Cambiar AM/PM"
-              >
-                <Text style={[styles.ampmText, useCustom && styles.ampmTextActive]}>
-                  {customHour < 12 ? 'AM' : 'PM'}
-                </Text>
-              </Pressable>
+              {/* Minutes */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>Min</Text>
+                <ScrollPicker
+                  items={MINUTES}
+                  selectedIndex={minuteIndex}
+                  onSelect={handleMinuteChange}
+                  width={72}
+                />
+              </View>
+
+              {/* AM/PM */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>AM/PM</Text>
+                <ScrollPicker
+                  items={AMPM}
+                  selectedIndex={ampmIndex}
+                  onSelect={handleAmpmChange}
+                  width={72}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -221,13 +389,12 @@ export default function Step5Screen() {
           </View>
         )}
 
-        {/* ── NUEVA SECCIÓN: ¿Con cuánta anticipación te aviso? ── */}
+        {/* ── SECCIÓN: ¿Con cuánta anticipación te aviso? ── */}
         <View style={styles.advanceSection}>
           <Text style={styles.sectionLabel}>🔔 ¿Con cuánta anticipación te aviso?</Text>
           <Text style={styles.snoozeSubtitle}>
             ¿Quieres que te avise antes de la hora exacta?
           </Text>
-          {/* Rollbar / picker visual */}
           <View style={styles.advanceRoller}>
             {ADVANCE_OPTIONS.map((opt) => (
               <Pressable
@@ -275,7 +442,7 @@ export default function Step5Screen() {
           })()}
         </View>
 
-        {/* ── NUEVA SECCIÓN: ¿Cada cuánto te recuerdo? ── */}
+        {/* ── SECCIÓN: ¿Cada cuánto te recuerdo? ── */}
         <View style={styles.snoozeSection}>
           <Text style={styles.sectionLabel}>🔔 ¿Cada cuánto te recuerdo?</Text>
           <Text style={styles.snoozeSubtitle}>
@@ -382,70 +549,98 @@ const styles = StyleSheet.create({
   quickBtnTextActive: {
     color: '#1A56DB',
   },
+  // ── Scroll Picker ──
   clockSection: {
     gap: 10,
   },
-  clockDisplay: {
+  pickerWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  pickerFadeTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: ITEM_HEIGHT * 2,
+    zIndex: 10,
+    // Gradient handled by opacity on items
+  },
+  pickerFadeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: ITEM_HEIGHT * 2,
+    zIndex: 10,
+  },
+  pickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    gap: 4,
   },
-  clockColumn: {
+  pickerCol: {
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
-  clockArrow: {
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  clockArrowText: {
-    fontSize: 20,
-    color: '#374151',
-    fontWeight: '700',
-  },
-  clockValue: {
-    fontSize: 42,
-    fontWeight: '800',
+  pickerColLabel: {
+    fontSize: 13,
+    fontWeight: '600',
     color: '#9CA3AF',
-    minWidth: 70,
-    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
-  clockValueActive: {
-    color: '#1A56DB',
+  pickerContainer: {
+    height: PICKER_HEIGHT,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  clockSeparator: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  ampmBtn: {
-    padding: 12,
+  pickerHighlight: {
+    position: 'absolute',
+    top: ITEM_HEIGHT * 2,
+    left: 0,
+    right: 0,
+    height: ITEM_HEIGHT,
+    backgroundColor: '#EFF6FF',
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-    minWidth: 60,
-    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#BFDBFE',
+    zIndex: 1,
   },
-  ampmText: {
-    fontSize: 20,
-    fontWeight: '700',
+  pickerItem: {
+    height: ITEM_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerItemSelected: {},
+  pickerItemText: {
+    fontSize: 26,
+    fontWeight: '600',
     color: '#9CA3AF',
   },
-  ampmTextActive: {
+  pickerItemTextSelected: {
+    fontSize: 30,
+    fontWeight: '800',
     color: '#1A56DB',
   },
+  pickerSeparator: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#374151',
+    marginTop: 28,
+    marginHorizontal: 2,
+  },
+  // ── Selected display ──
   selectedDisplay: {
     backgroundColor: '#ECFDF5',
     borderRadius: 16,

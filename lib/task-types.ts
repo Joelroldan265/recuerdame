@@ -39,6 +39,9 @@ export interface Task {
 /** Tiempo de espera en ms antes de leer el recordatorio al desbloquear. */
 export type UnlockReadDelay = 0 | 1000 | 3000 | 5000 | 10000;
 
+/** Nombre del archivo de sonido de alarma (sin extensión). */
+export type AlarmSound = 'alarm_classic' | 'alarm_urgent' | 'alarm_gentle' | 'alarm_bell' | 'alarm_digital';
+
 export interface Settings {
   voiceSpeed: number; // 0.5 – 2.0
   soundEnabled: boolean;
@@ -47,6 +50,7 @@ export interface Settings {
   doNotDisturbStart: ReminderTime; // hora inicio no molestar
   doNotDisturbEnd: ReminderTime;   // hora fin no molestar
   unlockReadDelay: UnlockReadDelay; // ms antes de leer al desbloquear
+  alarmSound: AlarmSound; // sonido de alarma para prioridad alta
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   doNotDisturbStart: { hour: 22, minute: 0 },
   doNotDisturbEnd: { hour: 8, minute: 0 },
   unlockReadDelay: 1000, // 1 segundo por defecto
+  alarmSound: 'alarm_classic', // sonido de alarma por defecto
 };
 
 export const UNLOCK_DELAY_OPTIONS: Array<{ label: string; description: string; value: UnlockReadDelay }> = [
@@ -94,6 +99,14 @@ export const SNOOZE_OPTIONS: Array<{ label: string; description: string; value: 
   { label: 'Cada 5 min', description: 'Te recuerdo 3 veces más', value: 5 },
   { label: 'Cada 10 min', description: 'Te recuerdo 3 veces más', value: 10 },
   { label: 'Cada 15 min', description: 'Te recuerdo 3 veces más', value: 15 },
+];
+
+export const ALARM_SOUND_OPTIONS: Array<{ label: string; description: string; value: AlarmSound }> = [
+  { label: '🔔 Clásico', description: 'Bip-bip alternado (por defecto)', value: 'alarm_classic' },
+  { label: '🚨 Urgente', description: 'Tono rápido estilo ambulancia', value: 'alarm_urgent' },
+  { label: '🎵 Suave', description: 'Tono ascendente suave', value: 'alarm_gentle' },
+  { label: '🔔 Campana', description: '3 golpes de campana', value: 'alarm_bell' },
+  { label: '💻 Digital', description: 'Bip digital corto', value: 'alarm_digital' },
 ];
 
 export const QUICK_TIMES: Array<{ label: string; hour: number; minute: number }> = [

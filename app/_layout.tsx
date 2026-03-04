@@ -292,6 +292,7 @@ export default function RootLayout() {
                 <Stack.Screen name="create/step5" />
                 <Stack.Screen name="create/step6" />
                 <Stack.Screen name="create/success" />
+                <Stack.Screen name="custom-voice" />
                 <Stack.Screen name="oauth/callback" />
               </Stack>
               <StatusBar style="auto" />
