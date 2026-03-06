@@ -25,7 +25,7 @@ function formatTime(hour: number, minute: number): string {
 
 export default function SuccessScreen() {
   const router = useRouter();
-  const { addTask } = useTaskContext();
+  const { addTask, updateTask } = useTaskContext();
   const { settings } = useSettingsContext();
   const {
     text, priority, repeatType, hour, minute,
@@ -80,12 +80,17 @@ export default function SuccessScreen() {
       const notifId = await scheduleTaskNotification(newTask, settings);
 
       // Programar notificaciones de snooze si el intervalo es > 0
+      let snoozeIds: string[] = [];
       if (parsedSnooze > 0) {
-        await scheduleSnoozeNotifications(newTask, settings);
+        snoozeIds = await scheduleSnoozeNotifications(newTask, settings);
       }
 
-      if (notifId) {
-        // Notificación programada correctamente
+      // Guardar los IDs de notificación en la tarea para poder cancelarlos al eliminar
+      if (notifId || snoozeIds.length > 0) {
+        await updateTask(newTask.id, {
+          notificationId: notifId ?? undefined,
+          snoozeNotificationIds: snoozeIds.length > 0 ? snoozeIds : undefined,
+        });
       }
 
       if (Platform.OS !== 'web') {

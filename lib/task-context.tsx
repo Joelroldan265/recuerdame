@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Task } from './task-types';
+import { cancelTaskNotification } from './notification-service';
 
 const STORAGE_KEY = '@recuerdame_tasks';
 
@@ -97,7 +98,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   }, [saveTasks]);
 
   const deleteTask = useCallback(async (id: string) => {
+    // Cancelar notificaciones programadas antes de eliminar la tarea
     setTasks((prev) => {
+      const task = prev.find((t) => t.id === id);
+      if (task) {
+        // Cancelar notificación principal
+        if (task.notificationId) {
+          cancelTaskNotification(task.notificationId).catch(() => {});
+        }
+        // Cancelar notificaciones de snooze
+        if (task.snoozeNotificationIds && task.snoozeNotificationIds.length > 0) {
+          task.snoozeNotificationIds.forEach((snoozeId) => {
+            cancelTaskNotification(snoozeId).catch(() => {});
+          });
+        }
+      }
       const updated = prev.filter((t) => t.id !== id);
       saveTasks(updated);
       return updated;
@@ -106,6 +121,18 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   const completeTask = useCallback(async (id: string) => {
     setTasks((prev) => {
+      const task = prev.find((t) => t.id === id);
+      if (task) {
+        // Cancelar notificaciones pendientes al completar la tarea
+        if (task.notificationId) {
+          cancelTaskNotification(task.notificationId).catch(() => {});
+        }
+        if (task.snoozeNotificationIds && task.snoozeNotificationIds.length > 0) {
+          task.snoozeNotificationIds.forEach((snoozeId) => {
+            cancelTaskNotification(snoozeId).catch(() => {});
+          });
+        }
+      }
       const updated = prev.map((t) =>
         t.id === id
           ? { ...t, completed: true, completedAt: new Date().toISOString() }

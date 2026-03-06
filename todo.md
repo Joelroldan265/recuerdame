@@ -173,3 +173,9 @@
 
 - [x] Actualizar etiquetas en Ajustes: "🔔 Alarma" y "🗣️ Frases de voz" con descripción clara de cada opción
 - [x] Descripción: Alarma = "Suena el tono al recibir", Frases = "Lee el texto en voz alta al abrir"
+
+## Bug: Notificaciones no se cancelan al borrar recordatorio
+
+- [x] Al eliminar un recordatorio, sus notificaciones programadas siguen disparándose
+- [x] Corregir deleteTask y completeTask para cancelar notificaciones al eliminar/completar
+- [x] Corregir success.tsx para guardar notificationId y snoozeNotificationIds en la tarea
