@@ -179,3 +179,17 @@
 - [x] Al eliminar un recordatorio, sus notificaciones programadas siguen disparándose
 - [x] Corregir deleteTask y completeTask para cancelar notificaciones al eliminar/completar
 - [x] Corregir success.tsx para guardar notificationId y snoozeNotificationIds en la tarea
+
+## Bug: Notificaciones media y baja no alertan
+
+- [x] Notificaciones de prioridad media y baja no muestran alerta en Android
+- [x] Auditar canales Android (importance) y sound para media y baja
+- [x] Corregir para que media y baja también alerten (con o sin sonido según configuración)
+
+## Bug crítico: Notificaciones no suenan (reporte APK)
+
+- [x] Alta prioridad: aparece notificación pero NO suena - corregido (extensiones .wav/.mp3 faltaban en canales y contenido)
+- [x] Media y baja: no alertan - corregido (channelForPriority en modo 'message' usaba SILENT para todas)
+- [x] Auditar canales Android, archivos de sonido y app.config.ts completo
+- [x] Canales siempre se recrean (no se omiten aunque permissionGranted=true)
+- [x] Nombres de sonido con extensión correcta: alarm_classic.wav, media.mp3, baja.mp3

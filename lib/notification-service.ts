@@ -44,8 +44,13 @@ const ANDROID_CHANNEL_DAILY = 'recuerdame-daily';
 
 /** Devuelve el channelId correcto según la prioridad y el estilo de notificación */
 function channelForPriority(priority: string, notifStyle?: string): string {
-  // Si el usuario elige 'message' (silencioso), usar canal SILENT para todas las prioridades
-  if (notifStyle === 'message') return ANDROID_CHANNEL_SILENT;
+  // En modo 'message' (frases de voz): alta usa ALARM (MAX, bypassDnd), media usa REMINDER (HIGH).
+  // Solo baja usa SILENT. NUNCA usar SILENT para alta/media: importance DEFAULT no genera alerta.
+  if (notifStyle === 'message') {
+    if (priority === 'high')   return ANDROID_CHANNEL_ALARM;    // MAX importance, bypassDnd
+    if (priority === 'medium') return ANDROID_CHANNEL_REMINDER; // HIGH importance, vibra y alerta
+    return ANDROID_CHANNEL_SILENT;                              // DEFAULT importance, solo banner
+  }
   if (priority === 'high')   return ANDROID_CHANNEL_ALARM;
   if (priority === 'medium') return ANDROID_CHANNEL_REMINDER;
   return ANDROID_CHANNEL_SILENT;
@@ -120,9 +125,10 @@ async function registerNotificationCategories(): Promise<void> {
  * @param alarmSound - Sonido de alarma seleccionado por el usuario (para el canal ALARM)
  */
 export async function initNotificationsLazy(alarmSound?: string): Promise<boolean> {
-  // Only skip re-init if we already have a confirmed grant.
-  // If permissionGranted === false (previous failure), allow retry.
-  if (permissionGranted === true) return true;
+  // IMPORTANT: Always recreate Android channels so sound changes take effect.
+  // Only skip permission request (not channel creation) if already granted.
+  // permissionGranted caches the permission status, NOT the channel creation.
+  const alreadyGranted = permissionGranted === true;
 
   try {
     if (Platform.OS === 'android') {
@@ -131,13 +137,17 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
       // Android solo puede reproducir UN sonido por notificación.
       // El canal se crea con el sonido actual; si el usuario cambia el sonido,
       // la app debe reiniciarse para que el canal se recree con el nuevo sonido.
+      // Asegurar que el nombre del sonido incluye la extensión correcta (.wav o .mp3)
+      const alarmSoundFile = (alarmSound ?? 'alarm_classic').endsWith('.wav')
+        ? (alarmSound ?? 'alarm_classic')
+        : `${alarmSound ?? 'alarm_classic'}.wav`;
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ALARM, {
         name: '🔴 Recordatorios urgentes (Alarma)',
         description: 'Alarma con voz para recordatorios de prioridad alta. Suena aunque el teléfono esté en silencio.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 500, 200, 500, 200, 500],
         lightColor: '#EF4444',
-        sound: alarmSound ?? 'alarm_classic',   // ← res/raw/{alarmSound}.wav — sonido elegido por el usuario
+        sound: alarmSoundFile,   // ← res/raw/alarm_classic.wav (con extensión)
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -152,7 +162,7 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 150, 250],
         lightColor: '#F59E0B',
-        sound: 'media',   // ← res/raw/media.mp3 — "Tienes una tarea que aún no es urgente..."
+        sound: 'media.mp3',   // ← res/raw/media.mp3 (con extensión)
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -167,20 +177,20 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
         importance: Notifications.AndroidImportance.DEFAULT,
         vibrationPattern: [0, 100],
         lightColor: '#22C55E',
-        sound: 'baja',   // ← res/raw/baja.mp3 — "Tienes una tarea pendiente que no urge..."
-        enableVibrate: false,
+        sound: 'baja.mp3',   // ← res/raw/baja.mp3 (con extensión)
+        enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         bypassDnd: false,
       });
-      // Canal LECTURA DIARIA — resumen de tareas pendientes, importancia DEFAULT
+      // Canal LECTURA DIARIA — resumen de tareas pendientes, importancia HIGH
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_DAILY, {
         name: '📖 Lectura diaria de tareas',
         description: 'Resumen de tareas pendientes a horas programadas.',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 200, 100, 200],
         lightColor: '#1A56DB',
-        sound: 'media',
+        sound: 'media.mp3',   // ← res/raw/media.mp3 (con extensión)
         enableVibrate: true,
         showBadge: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -200,6 +210,11 @@ export async function initNotificationsLazy(alarmSound?: string): Promise<boolea
     }
 
     await registerNotificationCategories();
+
+    // Skip permission request if already granted (channels are always recreated above)
+    if (alreadyGranted) {
+      return true;
+    }
 
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
@@ -279,13 +294,15 @@ function buildNotificationContent(
       : `${emoji} Recordatorio`
   );
 
-  // Para prioridad alta: usa el sonido de alarma seleccionado por el usuario (alarm_classic, alarm_urgent, etc.)
-  // Para prioridad media: usa la voz hablada 'media'
-  // Para prioridad baja: usa la voz suave 'baja'
-  const alarmSound = settings.alarmSound ?? 'alarm_classic';
+  // Para prioridad alta: usa el sonido de alarma seleccionado por el usuario (alarm_classic.wav, etc.)
+  // Para prioridad media: usa la voz hablada 'media.mp3'
+  // Para prioridad baja: usa la voz suave 'baja.mp3'
+  // IMPORTANTE: Android requiere el nombre con extensión (.wav o .mp3)
+  const alarmSoundBase = settings.alarmSound ?? 'alarm_classic';
+  const alarmSoundWithExt = alarmSoundBase.endsWith('.wav') ? alarmSoundBase : `${alarmSoundBase}.wav`;
   const sound: string | boolean = isHigh
-    ? alarmSound
-    : (!isLow && settings.soundEnabled) ? 'media' : 'baja';
+    ? alarmSoundWithExt
+    : (!isLow && settings.soundEnabled) ? 'media.mp3' : 'baja.mp3';
 
   return {
     title,
