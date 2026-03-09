@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { BatteryOptimizationGuide, resetBatteryGuide } from '@/components/battery-optimization-guide';
 import {
   View,
   Text,
@@ -106,6 +107,7 @@ function TimeSelector({
 }
 
 export default function SettingsScreen() {
+  const [showBatteryGuide, setShowBatteryGuide] = useState(false);
   const { settings, updateSettings } = useSettingsContext();
   const router = useRouter();
 
@@ -570,11 +572,25 @@ export default function SettingsScreen() {
             <View style={styles.aboutDivider} />
             <Text style={styles.aboutCreatorLabel}>Creado por</Text>
             <Text style={styles.aboutCreatorName}>Joel Roldan Gomez</Text>
+            <View style={styles.aboutDivider} />
+            <Pressable
+              style={({ pressed }) => [styles.batteryBtn, pressed && { opacity: 0.7 }]}
+              onPress={() => {
+                resetBatteryGuide();
+                setShowBatteryGuide(true);
+              }}
+            >
+              <Text style={styles.batteryBtnText}>🔋 Configurar alarmas en segundo plano</Text>
+            </Pressable>
           </View>
         </View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+      <BatteryOptimizationGuide
+        visible={showBatteryGuide}
+        onClose={() => setShowBatteryGuide(false)}
+      />
     </ScreenContainer>
   );
 }
@@ -975,5 +991,19 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  batteryBtn: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  batteryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A56DB',
   },
 });

@@ -193,3 +193,20 @@
 - [x] Auditar canales Android, archivos de sonido y app.config.ts completo
 - [x] Canales siempre se recrean (no se omiten aunque permissionGranted=true)
 - [x] Nombres de sonido con extensión correcta: alarm_classic.wav, media.mp3, baja.mp3
+
+## Bug CRÍTICO: Notificaciones no funcionan con pantalla apagada
+
+- [ ] Auditar trigger de notificaciones (date vs seconds vs calendar)
+- [ ] Verificar permisos SCHEDULE_EXACT_ALARM y USE_EXACT_ALARM en app.config.ts
+- [ ] Verificar que el canal ALARM tiene bypassDnd=true y lockscreenVisibility=PUBLIC
+- [ ] Verificar que el trigger no usa setTimeout o JS timer (no funciona en background)
+- [ ] Corregir para que las notificaciones funcionen con pantalla apagada
+
+## Guía de optimización de batería (notificaciones con pantalla apagada)
+
+- [x] Crear pantalla/modal BatteryOptimizationGuide con instrucciones por fabricante
+- [x] Detectar fabricante del dispositivo (Device.manufacturer) para mostrar pasos específicos
+- [x] Cubrir: Xiaomi/MIUI, Samsung/OneUI, Huawei/EMUI, OPPO/ColorOS, OnePlus, Motorola, stock Android
+- [x] Mostrar el aviso la primera vez que el usuario crea un recordatorio
+- [x] Añadir botón "Configurar ahora" en Ajustes que abre el aviso
+- [x] Persistir si el usuario ya configuró la batería para no volver a molestar

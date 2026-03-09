@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -11,6 +11,7 @@ import { useSettingsContext } from '@/lib/settings-context';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { scheduleTaskNotification, scheduleSnoozeNotifications } from '@/lib/notification-service';
 import { Task, Priority, RepeatType, SnoozeInterval, AdvanceMinutes } from '@/lib/task-types';
+import { BatteryOptimizationGuide, shouldShowBatteryGuide, markBatteryGuideShown } from '@/components/battery-optimization-guide';
 
 function generateId(): string {
   return `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -27,6 +28,7 @@ export default function SuccessScreen() {
   const router = useRouter();
   const { addTask, updateTask } = useTaskContext();
   const { settings } = useSettingsContext();
+  const [showBatteryGuide, setShowBatteryGuide] = useState(false);
   const {
     text, priority, repeatType, hour, minute,
     customDay, customMonth, customYear, snoozeInterval, advanceMinutes,
@@ -100,6 +102,12 @@ export default function SuccessScreen() {
       if (settings.soundEnabled) {
         speak(VOICE_MESSAGES.success, settings.voiceSpeed);
       }
+
+      // Mostrar guía de optimización de batería la primera vez (solo Android)
+      const needsGuide = await shouldShowBatteryGuide();
+      if (needsGuide) {
+        setShowBatteryGuide(true);
+      }
     };
 
     saveTask();
@@ -123,6 +131,10 @@ export default function SuccessScreen() {
 
   return (
     <ScreenContainer>
+      <BatteryOptimizationGuide
+        visible={showBatteryGuide}
+        onClose={() => setShowBatteryGuide(false)}
+      />
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Animación de éxito */}
         <View style={styles.successIcon}>
