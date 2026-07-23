@@ -1,7 +1,7 @@
 // Tipos compartidos — NO importar desde contextos para evitar imports circulares
 
 export type Priority = 'high' | 'medium' | 'low';
-export type RepeatType = 'once' | 'daily' | 'weekly' | 'monthly' | 'custom';
+export type RepeatType = 'once' | 'daily' | 'weekly' | 'monthly' | 'custom' | 'custom-once' | 'custom-daily' | 'custom-weekly' | 'custom-monthly';
 
 export interface CustomDate {
   day: number;
@@ -105,6 +105,10 @@ export const REPEAT_CONFIG: Record<RepeatType, { label: string; emoji: string; d
   weekly: { label: 'Semanal', emoji: '📆', description: 'Una vez por semana' },
   monthly: { label: 'Mensual', emoji: '🗓️', description: 'Una vez al mes' },
   custom: { label: 'Fecha específica', emoji: '📌', description: 'Elige un día' },
+  'custom-once': { label: 'Una vez', emoji: '1️⃣', description: 'Solo en esa fecha' },
+  'custom-daily': { label: 'Diaria desde esa fecha', emoji: '📅', description: 'Todos los días a partir de esa fecha' },
+  'custom-weekly': { label: 'Semanal desde esa fecha', emoji: '📆', description: 'Una vez por semana a partir de esa fecha' },
+  'custom-monthly': { label: 'Mensual desde esa fecha', emoji: '🗓️', description: 'Una vez al mes a partir de esa fecha' },
 };
 
 export const ADVANCE_OPTIONS: Array<{ label: string; description: string; value: AdvanceMinutes }> = [
@@ -113,6 +117,14 @@ export const ADVANCE_OPTIONS: Array<{ label: string; description: string; value:
   { label: '10 min antes', description: 'Te aviso 10 minutos antes', value: 10 },
   { label: '15 min antes', description: 'Te aviso 15 minutos antes', value: 15 },
   { label: '30 min antes', description: 'Te aviso media hora antes', value: 30 },
+];
+
+// Frecuencias disponibles para fecha específica
+export const CUSTOM_DATE_FREQUENCIES: Array<{ label: string; emoji: string; description: string; value: 'once' | 'daily' | 'weekly' | 'monthly' }> = [
+  { label: 'Una vez', emoji: '1️⃣', description: 'Solo en esa fecha', value: 'once' },
+  { label: 'Diaria', emoji: '📅', description: 'Todos los días a partir de esa fecha', value: 'daily' },
+  { label: 'Semanal', emoji: '📆', description: 'Una vez por semana a partir de esa fecha', value: 'weekly' },
+  { label: 'Mensual', emoji: '🗓️', description: 'Una vez al mes a partir de esa fecha', value: 'monthly' },
 ];
 
 export const SNOOZE_OPTIONS: Array<{ label: string; description: string; value: SnoozeInterval }> = [

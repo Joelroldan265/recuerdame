@@ -159,7 +159,11 @@ export default function SuccessScreen() {
             🔁 {repeatType === 'once' ? 'Una vez' :
                 repeatType === 'daily' ? 'Diaria' :
                 repeatType === 'weekly' ? 'Semanal' :
-                repeatType === 'monthly' ? 'Mensual' : 'Fecha específica'}
+                repeatType === 'monthly' ? 'Mensual' :
+                repeatType === 'custom-once' ? 'Una vez (fecha específica)' :
+                repeatType === 'custom-daily' ? 'Diaria desde fecha específica' :
+                repeatType === 'custom-weekly' ? 'Semanal desde fecha específica' :
+                repeatType === 'custom-monthly' ? 'Mensual desde fecha específica' : 'Fecha específica'}
           </Text>
 
           {parsedSnooze > 0 && (

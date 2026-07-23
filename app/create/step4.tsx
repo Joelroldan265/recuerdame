@@ -14,7 +14,7 @@ import { BigButton } from '@/components/big-button';
 import { StepIndicator } from '@/components/step-indicator';
 import { speak, VOICE_MESSAGES } from '@/lib/speech-service';
 import { useSettingsContext } from '@/lib/settings-context';
-import { RepeatType, REPEAT_CONFIG } from '@/lib/task-types';
+import { RepeatType, REPEAT_CONFIG, CUSTOM_DATE_FREQUENCIES } from '@/lib/task-types';
 
 const STEP_LABELS = ['Grabación', 'Confirmación', 'Prioridad', 'Repetición', 'Hora'];
 
@@ -128,6 +128,7 @@ export default function Step4Screen() {
   const { text, priority } = useLocalSearchParams<{ text: string; priority: string }>();
 
   const [selected, setSelected] = useState<RepeatType | null>(null);
+  const [customFrequency, setCustomFrequency] = useState<'once' | 'daily' | 'weekly' | 'monthly' | null>(null);
 
   const today = new Date();
   const [day, setDay] = useState(today.getDate());
@@ -149,26 +150,44 @@ export default function Step4Screen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setSelected(repeatType);
+    // Resetear frecuencia personalizada si no es 'custom'
+    if (repeatType !== 'custom') {
+      setCustomFrequency(null);
+    }
+  }, []);
+
+  const handleSelectFrequency = useCallback((frequency: 'once' | 'daily' | 'weekly' | 'monthly') => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setCustomFrequency(frequency);
   }, []);
 
   const handleContinue = useCallback(() => {
-    if (!selected) return;
+    let finalRepeatType: RepeatType = selected as RepeatType;
+
+    // Si es 'custom', necesitamos que haya seleccionado una frecuencia
+    if (selected === 'custom') {
+      if (!customFrequency) return;
+      // Convertir a tipo custom-* basado en la frecuencia seleccionada
+      finalRepeatType = `custom-${customFrequency}` as RepeatType;
+    }
 
     const params: Record<string, string> = {
       text: text ?? '',
       priority: priority ?? 'medium',
-      repeatType: selected,
+      repeatType: finalRepeatType,
     };
 
-    // Solo pasar customDate si el tipo es 'custom'
-    if (selected === 'custom') {
+    // Pasar customDate si el tipo es 'custom' o 'custom-*'
+    if (finalRepeatType.startsWith('custom')) {
       params.customDay = safeDay.toString();
       params.customMonth = month.toString();
       params.customYear = year.toString();
     }
 
     router.push({ pathname: '/create/step5', params });
-  }, [selected, text, priority, safeDay, month, year, router]);
+  }, [selected, customFrequency, text, priority, safeDay, month, year, router]);
 
   return (
     <ScreenContainer>
@@ -182,37 +201,39 @@ export default function Step4Screen() {
 
         {/* Opciones de repetición */}
         <View style={styles.options}>
-          {(Object.keys(REPEAT_CONFIG) as RepeatType[]).map((repeatType) => {
-            const config = REPEAT_CONFIG[repeatType];
-            const isSelected = selected === repeatType;
-            return (
-              <Pressable
-                key={repeatType}
-                onPress={() => handleSelect(repeatType)}
-                accessibilityRole="radio"
-                accessibilityLabel={`${config.label}: ${config.description}`}
-                accessibilityState={{ checked: isSelected }}
-                style={({ pressed }) => [
-                  styles.option,
-                  isSelected && styles.optionSelected,
-                  { transform: [{ scale: pressed ? 0.97 : 1 }] },
-                ]}
-              >
-                <Text style={styles.optionEmoji}>{config.emoji}</Text>
-                <View style={styles.optionText}>
-                  <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-                    {config.label}
-                  </Text>
-                  <Text style={styles.optionDescription}>{config.description}</Text>
-                </View>
-                {isSelected && (
-                  <View style={styles.checkmark}>
-                    <Text style={styles.checkmarkText}>✓</Text>
+          {(Object.keys(REPEAT_CONFIG) as RepeatType[])
+            .filter((repeatType) => !repeatType.startsWith('custom-'))
+            .map((repeatType) => {
+              const config = REPEAT_CONFIG[repeatType];
+              const isSelected = selected === repeatType;
+              return (
+                <Pressable
+                  key={repeatType}
+                  onPress={() => handleSelect(repeatType)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${config.label}: ${config.description}`}
+                  accessibilityState={{ checked: isSelected }}
+                  style={({ pressed }) => [
+                    styles.option,
+                    isSelected && styles.optionSelected,
+                    { transform: [{ scale: pressed ? 0.97 : 1 }] },
+                  ]}
+                >
+                  <Text style={styles.optionEmoji}>{config.emoji}</Text>
+                  <View style={styles.optionText}>
+                    <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                      {config.label}
+                    </Text>
+                    <Text style={styles.optionDescription}>{config.description}</Text>
                   </View>
-                )}
-              </Pressable>
-            );
-          })}
+                  {isSelected && (
+                    <View style={styles.checkmark}>
+                      <Text style={styles.checkmarkText}>✓</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
         </View>
 
         {/* ── Selector de fecha personalizada ── */}
@@ -257,6 +278,43 @@ export default function Step4Screen() {
                 📌 {safeDay} de {MONTHS[month - 1]} de {year}
               </Text>
             </View>
+
+            {/* ── Submenú de frecuencias para esa fecha ── */}
+            <View style={styles.frequencySection}>
+              <Text style={styles.frequencyTitle}>¿Con qué frecuencia?</Text>
+              <View style={styles.frequencyOptions}>
+                {CUSTOM_DATE_FREQUENCIES.map((freq) => {
+                  const isFreqSelected = customFrequency === freq.value;
+                  return (
+                    <Pressable
+                      key={freq.value}
+                      onPress={() => handleSelectFrequency(freq.value)}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${freq.label}: ${freq.description}`}
+                      accessibilityState={{ checked: isFreqSelected }}
+                      style={({ pressed }) => [
+                        styles.frequencyOption,
+                        isFreqSelected && styles.frequencyOptionSelected,
+                        { transform: [{ scale: pressed ? 0.97 : 1 }] },
+                      ]}
+                    >
+                      <Text style={styles.frequencyEmoji}>{freq.emoji}</Text>
+                      <View style={styles.frequencyText}>
+                        <Text style={[styles.frequencyLabel, isFreqSelected && styles.frequencyLabelSelected]}>
+                          {freq.label}
+                        </Text>
+                        <Text style={styles.frequencyDescription}>{freq.description}</Text>
+                      </View>
+                      {isFreqSelected && (
+                        <View style={styles.frequencyCheckmark}>
+                          <Text style={styles.frequencyCheckmarkText}>✓</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
           </View>
         )}
 
@@ -265,7 +323,7 @@ export default function Step4Screen() {
           onPress={handleContinue}
           variant="primary"
           fullWidth
-          disabled={!selected}
+          disabled={!selected || (selected === 'custom' && !customFrequency)}
         />
       </ScrollView>
     </ScreenContainer>
@@ -384,5 +442,70 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#1A56DB',
+  },
+  // ── Frequency Submenu ────────────────────────────────────
+  frequencySection: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  frequencyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  frequencyOptions: {
+    gap: 10,
+  },
+  frequencyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+  },
+  frequencyOptionSelected: {
+    borderColor: '#1A56DB',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 2,
+  },
+  frequencyEmoji: {
+    fontSize: 24,
+  },
+  frequencyText: {
+    flex: 1,
+    gap: 2,
+  },
+  frequencyLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  frequencyLabelSelected: {
+    color: '#1A56DB',
+  },
+  frequencyDescription: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  frequencyCheckmark: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1A56DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frequencyCheckmarkText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

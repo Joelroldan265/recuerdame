@@ -210,3 +210,27 @@
 - [x] Mostrar el aviso la primera vez que el usuario crea un recordatorio
 - [x] Añadir botón "Configurar ahora" en Ajustes que abre el aviso
 - [x] Persistir si el usuario ya configuró la batería para no volver a molestar
+
+## Auditoría de Informe de Evaluación (v1.0.17)
+
+- [ ] Revisar el informe de evaluación y contrastar con el estado actual del proyecto.
+  - [ ] Verificar pila tecnológica (Hermes, Expo Router, AsyncStorage, SecureStore, SQLite, tRPC, React Query).
+  - [ ] Confirmar capacidades core (notificaciones avanzadas, audio/voz, IA Cloud).
+  - [ ] Validar hallazgos y áreas de mejora (errores de notificaciones, audio/TTS, estado de UI, tamaño APK, UX/flujos, gestión de permisos).
+  - [ ] Analizar plan de acción y recomendaciones.
+
+- [x] Verificar que los errores de notificaciones (`[NotifService] Error al programar lectura diaria`, `Error en initNotificationsLazy`, `Error snooze`) ya están resueltos o mitigados. (Mitigados con manejo de errores y reintentos, y correcciones previas en `todo.md`)
+- [x] Verificar que los errores de Audio/TTS (`[SpeechService] TTS error`, `[Step1] Error starting recording`, `[Step2] transcription error`) ya están resueltos o mitigados. (Mitigados con manejo de errores, reintentos y fallbacks en `step2.tsx`)
+- [x] Verificar que el error de estado de UI (`Looks like you have nested a 'NavigationContainer' inside another`) ya está resuelto. (El proyecto usa `Expo Router` con `<Stack>`, no `NavigationContainer` anidado. El informe puede estar desactualizado o ser incorrecto en este punto.)
+- [ ] Confirmar el tamaño actual del APK y el uso de librerías nativas. (No se puede verificar directamente desde el sandbox, pero el informe indica 51MB y 32MB de librerías nativas. Esto sigue siendo un punto de mejora).
+- [x] Evaluar la complejidad del flujo de creación de recordatorios y la gestión de permisos. (El flujo de creación sigue siendo de varios pasos, lo cual es un punto de mejora UX. La gestión de permisos se ha mejorado con solicitudes explícitas y manejo de errores en `initNotificationsLazy` y `step1.tsx`).
+
+## Nueva Funcionalidad: Submenú de Frecuencias para Fecha Específica
+
+- [x] Actualizar `lib/task-types.ts` con nuevos tipos de repetición: `custom-once`, `custom-daily`, `custom-weekly`, `custom-monthly`
+- [x] Agregar `CUSTOM_DATE_FREQUENCIES` en `lib/task-types.ts` con opciones de frecuencia para fecha específica
+- [x] Modificar `app/create/step4.tsx` para mostrar submenú de frecuencias cuando se selecciona "Fecha específica"
+- [x] Actualizar lógica de propagación de parámetros en `app/create/step4.tsx` para convertir `custom-{frequency}` a `RepeatType`
+- [x] Actualizar `app/create/success.tsx` para mostrar correctamente los nuevos tipos de repetición en el resumen
+- [ ] Probar el flujo completo desde step4 hasta success
+- [ ] Verificar que las notificaciones se programan correctamente con los nuevos tipos de repetición
