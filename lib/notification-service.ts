@@ -266,6 +266,13 @@ function nextOccurrence(hour: number, minute: number): Date {
   return candidate;
 }
 
+/** Construye la fecha exacta elegida para una tarea de fecha específica. */
+function customDateOccurrence(task: Task): Date | null {
+  if (!task.customDate) return null;
+  const { day, month, year } = task.customDate;
+  return new Date(year, month - 1, day, task.reminderTime.hour, task.reminderTime.minute, 0, 0);
+}
+
 function priorityEmoji(priority: string): string {
   if (priority === 'high')   return '🔴';
   if (priority === 'medium') return '🟡';
@@ -354,15 +361,12 @@ export async function scheduleTaskNotification(
         trigger = { type: Notifications.SchedulableTriggerInputTypes.MONTHLY, day, hour, minute, channelId };
         break;
       }
-      case 'custom': {
-        let targetDate: Date;
-        if (task.customDate) {
-          const { day, month, year } = task.customDate;
-          targetDate = new Date(year, month - 1, day, hour, minute, 0, 0);
-          if (targetDate.getTime() <= Date.now()) return null;
-        } else {
-          targetDate = nextOccurrence(hour, minute);
-        }
+      case 'custom':
+      case 'custom-once': {
+        const targetDate = customDateOccurrence(task) ?? nextOccurrence(hour, minute);
+        // Una fecha específica nunca debe transformarse en una alerta diaria.
+        // Si ya pasó, no crear una alerta inmediata o para mañana.
+        if (task.customDate && targetDate.getTime() <= Date.now()) return null;
         trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: targetDate, channelId };
         break;
       }
@@ -437,7 +441,9 @@ export async function scheduleSnoozeNotifications(
     const channelId = channelForPriority(task.priority);
     const ids: string[] = [];
     const SNOOZE_COUNT = 3;
-    const base = nextOccurrence(task.reminderTime.hour, task.reminderTime.minute);
+    const base = (task.repeatType === 'custom' || task.repeatType === 'custom-once')
+      ? (customDateOccurrence(task) ?? nextOccurrence(task.reminderTime.hour, task.reminderTime.minute))
+      : nextOccurrence(task.reminderTime.hour, task.reminderTime.minute);
 
     for (let i = 1; i <= SNOOZE_COUNT; i++) {
       const snoozeDate = new Date(base.getTime() + i * task.snoozeInterval * 60 * 1000);

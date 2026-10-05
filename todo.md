@@ -234,3 +234,9 @@
 - [x] Actualizar `app/create/success.tsx` para mostrar correctamente los nuevos tipos de repetición en el resumen
 - [ ] Probar el flujo completo desde step4 hasta success
 - [ ] Verificar que las notificaciones se programan correctamente con los nuevos tipos de repetición
+
+## Corrección de alcance: fecha específica sin alertas diarias
+- [x] En una tarea con fecha específica, no programar alertas diarias ni semanales implícitas.
+- [x] Mantener el recordatorio guardado hasta la fecha y hora elegidas.
+- [x] Emitir una sola alerta en la fecha y hora planeadas y completar/eliminar después según el flujo existente.
+- [x] Verificar que las opciones repetitivas explícitas (diaria/semanal/mensual) sigan funcionando separadamente.

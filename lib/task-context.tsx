@@ -154,7 +154,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       if (t.completed) return false;
       const created = new Date(t.createdAt);
       if (t.repeatType === 'daily') return true;
-      if (t.repeatType === 'once' || t.repeatType === 'custom') {
+      if (t.repeatType === 'once' || t.repeatType === 'custom' || t.repeatType === 'custom-once') {
         const taskDate = t.customDate
           ? new Date(t.customDate.year, t.customDate.month - 1, t.customDate.day)
           : created;

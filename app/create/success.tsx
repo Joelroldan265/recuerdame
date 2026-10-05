@@ -166,6 +166,12 @@ export default function SuccessScreen() {
                 repeatType === 'custom-monthly' ? 'Mensual desde fecha específica' : 'Fecha específica'}
           </Text>
 
+          {customDay && customMonth && customYear && (
+            <Text style={styles.summaryDate}>
+              📌 Fecha planeada: {customDay}/{customMonth}/{customYear}
+            </Text>
+          )}
+
           {parsedSnooze > 0 && (
             <Text style={styles.summarySnooze}>
               ⏱️ {snoozeLabel}
@@ -266,6 +272,11 @@ const styles = StyleSheet.create({
   summarySnooze: {
     fontSize: 15,
     color: '#D97706',
+    fontWeight: '600',
+  },
+  summaryDate: {
+    fontSize: 15,
+    color: '#1A56DB',
     fontWeight: '600',
   },
   actions: {

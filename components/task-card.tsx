@@ -28,6 +28,10 @@ function getRepeatLabel(task: Task): string {
     weekly: 'Semanal',
     monthly: 'Mensual',
     custom: 'Fecha específica',
+    'custom-once': 'Una vez en fecha específica',
+    'custom-daily': 'Diaria desde fecha específica',
+    'custom-weekly': 'Semanal desde fecha específica',
+    'custom-monthly': 'Mensual desde fecha específica',
   };
   return labels[task.repeatType] ?? '';
 }
